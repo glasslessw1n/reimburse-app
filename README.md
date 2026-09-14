@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **当前版本** | v0.1.0 |
+| **当前版本** | v0.1.2 |
 | **平台** | macOS 14 Sonoma+（Apple Silicon / Intel） |
 | **技术栈** | Swift 5.9 + SwiftUI + Apple Vision + PDFKit + URLSession |
 | **依赖** | Xcode 14+（含 xcodebuild） / [XcodeGen](https://github.com/yonaskolb/XcodeGen) |
