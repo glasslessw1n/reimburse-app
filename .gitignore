@@ -1,0 +1,38 @@
+# Xcode
+build/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# XcodeGen 产物
+# 注意：ReimbursementNative.xcodeproj 是 XcodeGen 生成的，应该 commit
+# 但 xcuserdata/ 应该忽略
+
+# Swift Package Manager
+.swiftpm/
+.build/
+Package.resolved
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# 构建产物
+BuildAssets/temp_build/
+*.dmg
+
+# 用户数据
+~/Library/Application Support/Reimbursement/sessions/
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*~

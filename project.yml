@@ -1,0 +1,53 @@
+name: ReimbursementNative
+options:
+  bundleIdPrefix: com.local
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGNING_ALLOWED: "NO"
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: "NO"
+    PRODUCT_NAME: 报销整理
+
+targets:
+  ReimbursementNative:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources
+        excludes:
+          - "Info.plist"
+          - "ReimbursementNative.entitlements"
+
+      # AppIcon.icns → Contents/Resources
+      - path: BuildAssets/AppIcon.icns
+        buildPhase:
+          copyFiles:
+            destination: resources
+
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "NO"
+        INFOPLIST_FILE: Sources/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.local.reimbursement
+        CODE_SIGN_ENTITLEMENTS: Sources/ReimbursementNative.entitlements
+        COMBINE_HIDPI_IMAGES: "YES"
+        LD_RUNPATH_SEARCH_PATHS:
+          - "@executable_path/../Frameworks"
+    dependencies:
+      - sdk: SwiftUI.framework
+      - sdk: AppKit.framework
+      - sdk: WebKit.framework          # M9 报销系统填报会用
+      - sdk: PDFKit.framework           # M3 OCR 用
+      - sdk: Vision.framework           # M3 OCR 用
+      - sdk: UniformTypeIdentifiers.framework

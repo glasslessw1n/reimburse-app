@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="100%" height="100%">
+  <defs>
+    <!-- 1. 底板垂直渐变 -->
+    <linearGradient id="macBgLinear" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%"   stop-color="#ffb885" />
+      <stop offset="5%"   stop-color="#ff7e33" />
+      <stop offset="14%"  stop-color="#f55816" />
+      <stop offset="50%"  stop-color="#e8450c" />
+      <stop offset="85%"  stop-color="#cf3203" />
+      <stop offset="100%" stop-color="#b02200" />
+    </linearGradient>
+
+    <!-- 2. 横向拉伸超 150% 的宽穹顶柔光高光 -->
+    <radialGradient id="topAuraWide" cx="50%" cy="0%" r="50%" fx="50%" fy="0%" gradientTransform="translate(-307, 0) scale(1.6, 0.42)">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.88" />
+      <stop offset="18%"  stop-color="#ffffff" stop-opacity="0.65" />
+      <stop offset="42%"  stop-color="#ffbe99" stop-opacity="0.30" />
+      <stop offset="70%"  stop-color="#f85d1d" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#f85d1d" stop-opacity="0.0" />
+    </radialGradient>
+
+    <!-- 3. macOS 风格边缘微反光边框 -->
+    <linearGradient id="edgeBorder" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.65" />
+      <stop offset="20%"  stop-color="#ffffff" stop-opacity="0.15" />
+      <stop offset="80%"  stop-color="#000000" stop-opacity="0.1" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.35" />
+    </linearGradient>
+
+    <!-- 条形码图案 -->
+    <pattern id="barcode" width="12" height="28" patternUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="3" height="28" fill="#1e1e1e" />
+      <rect x="5" y="0" width="1.5" height="28" fill="#1e1e1e" />
+      <rect x="8" y="0" width="2" height="28" fill="#1e1e1e" />
+    </pattern>
+
+    <!-- Elekta 矢量 Logo 组件 -->
+    <g id="elektaLogo">
+      <!-- 标志符号：开口外圆环 (白色) -->
+      <path d="M -1,-8 A 9.5 9.5 0 1 0 8,-2" fill="none" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round" />
+
+      <!-- 内部沿 45度 渐变缩小的三颗特色圆点 (品牌电光青蓝色) -->
+      <circle cx="3.2" cy="-3.6" r="2.1" fill="#00a3e0" />
+      <circle cx="0.4" cy="-0.6" r="1.35" fill="#00a3e0" />
+      <circle cx="-1.9" cy="1.9" r="0.85" fill="#00a3e0" />
+
+      <!-- 品牌英文字体排印 -->
+      <text x="14" y="5.2"
+            font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+            font-size="15.5"
+            font-weight="700"
+            letter-spacing="-0.4px"
+            fill="#ffffff">Elekta</text>
+    </g>
+
+    <!-- 单张发票表面组件 (自身中心点归零 280 x 360) -->
+    <g id="receiptSheet">
+      <!-- 白色票据卡体 -->
+      <rect x="-140" y="-180" width="280" height="360" rx="14" fill="#ffffff" />
+
+      <!-- 顶部深灰色 Topbar -->
+      <path d="M-140,-166 A14,14 0 0 1 -126,-180 L126,-180 A14,14 0 0 1 140,-166 L140,-138 L-140,-138 Z" fill="#1f2327" />
+
+      <!-- Topbar 左侧小白条 -->
+      <rect x="-120" y="-163" width="56" height="8" rx="2.5" fill="#ffffff" opacity="0.85" />
+
+      <!-- Topbar 右侧：嵌入 Elekta 矢量 Logo -->
+      <use href="#elektaLogo" transform="translate(60, -159)" />
+
+      <!-- 发票内容区 -->
+      <!-- 图标与标题 -->
+      <rect x="-120" y="-120" width="22" height="22" rx="4" fill="#f2591d" />
+      <rect x="-92" y="-118" width="98" height="9" rx="2" fill="#1f2327" />
+      <rect x="-92" y="-106" width="68" height="4" rx="1.5" fill="#8d9499" />
+
+      <!-- 三列信息条 -->
+      <rect x="-120" y="-76" width="26" height="4" fill="#8d9499" />
+      <rect x="-120" y="-68" width="56" height="8" rx="2" fill="#1f2327" />
+
+      <rect x="-40" y="-76" width="26" height="4" fill="#8d9499" />
+      <rect x="-40" y="-68" width="46" height="8" rx="2" fill="#1f2327" />
+
+      <rect x="40" y="-76" width="26" height="4" fill="#8d9499" />
+      <rect x="40" y="-68" width="56" height="8" rx="2" fill="#1f2327" />
+
+      <!-- 列表明细项 -->
+      <circle cx="-117" cy="-32" r="2.5" fill="#f2591d" />
+      <rect x="-108" y="-35" width="70" height="7" rx="2" fill="#1f2327" />
+      <rect x="60" y="-35" width="40" height="9" rx="2" fill="#1f2327" />
+
+      <circle cx="-117" cy="-12" r="2.5" fill="#f2591d" />
+      <rect x="-108" y="-15" width="88" height="7" rx="2" fill="#1f2327" />
+      <rect x="60" y="-15" width="40" height="9" rx="2" fill="#1f2327" />
+
+      <circle cx="-117" cy="8" r="2.5" fill="#f2591d" />
+      <rect x="-108" y="5" width="60" height="7" rx="2" fill="#1f2327" />
+      <rect x="60" y="5" width="40" height="9" rx="2" fill="#1f2327" />
+
+      <circle cx="-117" cy="28" r="2.5" fill="#f2591d" />
+      <rect x="-108" y="25" width="76" height="7" rx="2" fill="#1f2327" />
+      <rect x="60" y="25" width="40" height="9" rx="2" fill="#1f2327" />
+
+      <!-- 底部条与条形码 -->
+      <rect x="-120" y="58" width="26" height="6" rx="2" fill="#8d9499" />
+      <rect x="-5" y="54" width="105" height="14" rx="3" fill="#f2591d" />
+      <rect x="-95" y="88" width="190" height="28" fill="url(#barcode)" />
+    </g>
+
+    <!-- 单层立体变形单元 -->
+    <g id="isoSheet">
+      <g transform="matrix(1.2 0.58 -1.2 0.58 0 0)">
+        <use href="#receiptSheet" />
+      </g>
+    </g>
+  </defs>
+
+  <!-- 1. 底层饱满橙色基底 -->
+  <rect x="0" y="0" width="1024" height="1024" rx="230" fill="url(#macBgLinear)" />
+
+  <!-- 2. 横向拉伸超 150% 的宽穹顶平滑高光 -->
+  <rect x="0" y="0" width="1024" height="1024" rx="230" fill="url(#topAuraWide)" />
+
+  <!-- 3. macOS 风格外边框微光描边 -->
+  <rect x="1" y="1" width="1022" height="1022" rx="229" fill="none" stroke="url(#edgeBorder)" stroke-width="2" />
+
+  <!-- 4. 四边严格等距居中的立体堆叠组 (上下左右各 128px 间距) -->
+  <g transform="translate(512, 512)">
+    <use href="#isoSheet" transform="translate(0, 180)"  opacity="0.08" />
+    <use href="#isoSheet" transform="translate(0, 108)"  opacity="0.22" />
+    <use href="#isoSheet" transform="translate(0, 36)"   opacity="0.40" />
+    <use href="#isoSheet" transform="translate(0, -36)"  opacity="0.62" />
+    <use href="#isoSheet" transform="translate(0, -108)" opacity="0.82" />
+    <use href="#isoSheet" transform="translate(0, -180)" opacity="1.0" />
+  </g>
+</svg>
