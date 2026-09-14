@@ -6,11 +6,10 @@
 //  对应 core/packager.py:package_to_file
 //
 //  ZIP 结构：
-//    报销单据_<sid>_<时间>/
+//    报销单据_<时间>/
 //    ├── <各行程子目录>/<重命名后的文件>
 //    ├── 本地/<文件>
-//    ├── manifest.json
-//    └── 报销明细.xlsx（可选；M8.5 再加）
+//    ├── 报销明细.xlsx
 //
 
 import Foundation
@@ -30,7 +29,7 @@ enum ZipPackager {
     }
 
     /// 打包并返回 ZIP 路径（不删除 session 目录）
-    static func package(session: SessionManager, includeExcel: Bool = false) throws -> URL {
+    static func package(session: SessionManager, includeExcel: Bool = true) throws -> URL {
         let root = session.rootDir
         guard FileManager.default.fileExists(atPath: root.path) else {
             throw PackageError.sessionNotFound
@@ -40,6 +39,17 @@ enum ZipPackager {
         let zipName = "报销单据\(timestamp)"
         let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first!
         let zipURL = downloads.appendingPathComponent("\(zipName).zip")
+
+        // 生成 Excel 明细（在 ZIP 根目录，和 trips/ 平级）
+        if includeExcel {
+            let xlsxURL = root.appendingPathComponent("报销明细.xlsx")
+            do {
+                try ExcelBuilder.build(bills: session.manifest.bills, outputURL: xlsxURL)
+            } catch {
+                // Excel 生成失败不阻断打包（warning 写入 log）
+                FileHandle.standardError.write(Data("[ZipPackager] Excel 生成失败: \(error.localizedDescription)\n".utf8))
+            }
+        }
 
         // 用 /usr/bin/ditto 打包（macOS 自带）
         // - ditto 自动跳过空目录（zip 命令做不到）
