@@ -96,6 +96,7 @@ final class UploadViewModel: ObservableObject {
 struct UploadStep: View {
     @EnvironmentObject var state: AppState
     @StateObject private var vm = UploadViewModel()
+    @State private var showClearConfirm = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -168,11 +169,7 @@ struct UploadStep: View {
             // 底部按钮栏
             HStack {
                 Button("清空") {
-                    if let session = state.currentSession {
-                        session.manifest.bills.removeAll()
-                        session.manifest.needsReviewCount = 0
-                        session.save()
-                    }
+                    showClearConfirm = true
                 }
                 .buttonStyle(.bordered)
                 .disabled(state.currentSession?.manifest.bills.isEmpty ?? true)
@@ -193,6 +190,28 @@ struct UploadStep: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
         }
+        .alert("确认清空？", isPresented: $showClearConfirm) {
+            Button("取消", role: .cancel) { }
+            Button("清空", role: .destructive) { clearAll() }
+        } message: {
+            Text("将删除当前会话的所有识别结果与原文件，该操作不可撤销。")
+        }
+    }
+
+    /// 清空：删除 bills / trips / local / originals 目录
+    private func clearAll() {
+        guard let session = state.currentSession else { return }
+        session.manifest.bills.removeAll()
+        session.manifest.trips.removeAll()
+        session.manifest.local.removeAll()
+        session.manifest.needsReviewCount = 0
+        // 删原文件目录（避免下次同 session 复用）
+        let originals = session.rootDir.appendingPathComponent("originals")
+        try? FileManager.default.removeItem(at: originals)
+        try? FileManager.default.createDirectory(at: originals, withIntermediateDirectories: true)
+        session.save()
+        // 强制刷新 @Published（SwiftUI 对 array 的同 identity mutation 不一定刷）
+        state.currentSession = session
     }
 
     /// 进度面板：spinner + stage + 进度条 + 当前文件名
