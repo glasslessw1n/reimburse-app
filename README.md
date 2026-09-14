@@ -20,6 +20,7 @@
 - **智能归类**：按日期 + 城市连通性自动合并差旅行程
 - **酒店水单/发票自动配对**：金额完全匹配时合并为一条住宿发票
 - **ZIP 打包**：保存到 `~/Downloads/`，自动跳过空目录
+- **Excel 明细生成**：手写 xlsx（zip + OOXML，无第三方依赖），按行程分组，5 列结构（票据类别 / 日期/区间 / 金额 / 明细 / 备注），含小计和总计
 
 ---
 
@@ -217,7 +218,6 @@ ZIP 结构：
 ## 🚧 已知限制 / 后续计划
 
 - **报销系统填报**（Playwright 那部分）—— Swift 没有原生等价物，**v0.2.0 规划**，可选 WKWebView + JS 注入 或外接脚本桥
-- **Excel 明细生成**（Python 用了 `legacy_excel/gen_excel.py`）—— **v0.2.0 规划**，手写 xlsx（zip + OOXML），或引入 ZIPFoundation
 - **后处理兜底**（Python 几个启发式如 boarding_pass 检测、hotel 日期偏移等）—— **v0.3.0 规划**，按用户实测 case 增量加
 - **macOS Gatekeeper**：dmg 是 ad-hoc 签名，首次启动需右键 → 打开 → 信任
 - **OCR Sendable warning**：3 个 Vision framework 非 Sendable warning，不影响功能
