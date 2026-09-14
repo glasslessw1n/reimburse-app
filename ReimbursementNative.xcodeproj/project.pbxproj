@@ -29,6 +29,7 @@
 		807E3887BA007E7DE667734F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 585F922C644A2CD8849D8BDB /* ContentView.swift */; };
 		80AED8FA7AC5344EA1F11398 /* DropZone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D4B345BB7619931D8BA1B21 /* DropZone.swift */; };
 		82D4D7368ABA15DF8EA1601D /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9ED50FBDC7BE6796345D6B9 /* AppState.swift */; };
+		872BFBFF350D874B4F7D20EB /* ExcelBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D79ED62B105507DD2189726A /* ExcelBuilder.swift */; };
 		91352CA1C7A939237E2014AE /* PackageStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07245D9B04F8CCA72A9A6813 /* PackageStep.swift */; };
 		9498161FF5586574394DD628 /* FinalizeStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABA10AAA46A4AEE1CB3AA57C /* FinalizeStep.swift */; };
 		A2B070CFD4DF9A3CBDACCC86 /* LLMPrompts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6475F74DA33814085DB30B15 /* LLMPrompts.swift */; };
@@ -89,6 +90,7 @@
 		B004F72802FC0388285B431B /* AnyJSONValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnyJSONValue.swift; sourceTree = "<group>"; };
 		BA3837C41D46FAC82F917A7E /* PDFKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PDFKit.framework; path = System/Library/Frameworks/PDFKit.framework; sourceTree = SDKROOT; };
 		C9A2AE3A90638EB6D5EA53CC /* Vision.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Vision.framework; path = System/Library/Frameworks/Vision.framework; sourceTree = SDKROOT; };
+		D79ED62B105507DD2189726A /* ExcelBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExcelBuilder.swift; sourceTree = "<group>"; };
 		E45B0077F91547E7FF6454F1 /* LLMRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMRecognizer.swift; sourceTree = "<group>"; };
 		E53C8203E0BC387F035D3A18 /* UploadStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadStep.swift; sourceTree = "<group>"; };
 		F15040540CFF802605FED89C /* UniformTypeIdentifiers.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UniformTypeIdentifiers.framework; path = System/Library/Frameworks/UniformTypeIdentifiers.framework; sourceTree = SDKROOT; };
@@ -281,6 +283,7 @@
 		EED63D53E251A406B191064E /* Packaging */ = {
 			isa = PBXGroup;
 			children = (
+				D79ED62B105507DD2189726A /* ExcelBuilder.swift */,
 				3F43B358FD0D9CB08C1B45A9 /* ZipPackager.swift */,
 			);
 			path = Packaging;
@@ -365,6 +368,7 @@
 				DA0D242FE895A6C2BA1C7D5A /* BillTypeFields.swift in Sources */,
 				807E3887BA007E7DE667734F /* ContentView.swift in Sources */,
 				80AED8FA7AC5344EA1F11398 /* DropZone.swift in Sources */,
+				872BFBFF350D874B4F7D20EB /* ExcelBuilder.swift in Sources */,
 				9498161FF5586574394DD628 /* FinalizeStep.swift in Sources */,
 				0AFF7138CE5989F355DE2A9D /* HomeView.swift in Sources */,
 				C2B4AD562F10AE6292AC3FDD /* LLMClient.swift in Sources */,
