@@ -37,7 +37,7 @@ enum ZipPackager {
         }
 
         let timestamp = Self.timestampString()
-        let zipName = "报销单据_\(session.sid)_\(timestamp)"
+        let zipName = "报销单据\(timestamp)"
         let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first!
         let zipURL = downloads.appendingPathComponent("\(zipName).zip")
 
@@ -132,7 +132,7 @@ enum ZipPackager {
 
     private static func timestampString() -> String {
         let f = DateFormatter()
-        f.dateFormat = "yyyyMMdd-HHmmss"
+        f.dateFormat = "yyyy-MM-dd-HHmmss"
         return f.string(from: Date())
     }
 }
