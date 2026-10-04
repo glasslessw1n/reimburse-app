@@ -67,21 +67,15 @@ final class SessionManager: ObservableObject {
 
     /// 追加一张识别后的票据
     func ingest(_ bill: BillInfo) {
-        // 通用去重：boarding_pass 按 (date + from_city + to_city + flight_no) 去重
-        // 同一物理凭证被 OCR/LLM 重复识别时只保留先来那一张
+        // 通用去重：boarding_pass 按完整 content key 去重
+        // 同一物理凭证的 OCR/LLM 重复识别只保留先来那一张（保留 confidence 高的）
         if bill.billType == .boardingPass {
+            let billKey = Self.dedupKey(of: bill)
             let dupIdx = manifest.bills.firstIndex { b in
                 guard b.billType == .boardingPass else { return false }
-                if b.dateMMDDs != bill.dateMMDDs { return false }
-                if b.fromCity != bill.fromCity { return false }
-                if b.toCity != bill.toCity { return false }
-                // flight_no 可能一空一实 → 视为同票
-                let bf = b.fields["flight_no"]?.flatMap { $0 } ?? ""
-                let af = bill.fields["flight_no"]?.flatMap { $0 } ?? ""
-                return bf == af || bf.isEmpty || af.isEmpty
+                return Self.dedupKey(of: b) == billKey
             }
             if dupIdx != nil {
-                // 保留 confidence 更高的
                 if bill.confidence > manifest.bills[dupIdx!].confidence {
                     manifest.bills[dupIdx!] = bill
                     save()
@@ -92,6 +86,15 @@ final class SessionManager: ObservableObject {
         manifest.bills.append(bill)
         if bill.needsReview { manifest.needsReviewCount += 1 }
         save()
+    }
+
+    /// boarding_pass 去重 key：date_range + 起降城市 + 航班号 + 乘客名
+    /// OCR/LLM 偶尔会产出不同 dateMMDDs 长度（一张 ["0912"]，一张 ["0912","0915"]），
+    /// 但 date_range + 起降城市 + 航班号足够标识同一物理票。
+    private static func dedupKey(of bill: BillInfo) -> String {
+        let flightNo = bill.fields["flight_no"]?.flatMap { $0 } ?? ""
+        let passenger = bill.fields["passenger_name"]?.flatMap { $0 } ?? ""
+        return "\(bill.dateRange.start)_\(bill.dateRange.end)|\(bill.fromCity)|\(bill.toCity)|\(flightNo)|\(passenger)"
     }
 
     /// finalize：完整流程（对应 core/collector.py:finalize_session）
