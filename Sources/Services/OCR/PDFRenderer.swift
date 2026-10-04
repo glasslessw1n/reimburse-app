@@ -21,7 +21,9 @@ enum PDFRenderer {
     private static let a4Height: CGFloat = 842
 
     /// 登机凭证在 A4 上的裁切区域 (x, y, width, height)，单位 pt
-    private static let boardingPassCrop = CGRect(x: 109, y: 96, width: 376, height: 230)
+    /// y 坐标系自下向上：登机牌位于 PDF 上半部分，y 起点 ~460，高度 ~270
+    /// (实测基于"航旅纵横"电子登机凭证 A4 版式)
+    private static let boardingPassCrop = CGRect(x: 100, y: 460, width: 395, height: 270)
 
     /// 渲染所有页（可裁切 boarding pass 区域）
     /// - Parameter crop: 给非 nil 时，**第一页**按这个矩形裁切；后续页不裁切
@@ -87,5 +89,63 @@ enum PDFRenderer {
             }
         }
         return parts.joined(separator: "\n\n")
+    }
+
+    /// 生成登机凭证的"裁切版 PDF Data"
+    /// - 若 PDF 是 A4 整页未裁切 → 只保留 boardingPassCrop 区域，输出单页 PDF（376×230 pt）
+    /// - 若 PDF 已是凭证尺寸 → 原样返回
+    /// - 失败 → 返回 nil
+    static func cropBoardingPass(pdfData: Data) -> Data? {
+        guard let doc = PDFDocument(data: pdfData), doc.pageCount >= 1,
+              let page = doc.page(at: 0) else { return nil }
+        let bounds = page.bounds(for: .mediaBox)
+        let isA4 = abs(bounds.width - a4Width) < 5 && abs(bounds.height - a4Height) < 5
+        if !isA4 { return pdfData }   // 已经是凭证尺寸 → 不动
+
+        // 策略：复制原 page，调小 mediaBox 为 crop，再叠加 translation 让内容落到新 box 原点
+        // PDFKit 没有直接的 transform setter，但 page.copy() 返回新 page，
+        // 设置 setBounds(.mediaBox) + setBounds(.cropBox) + setRotation 仍带原坐标系
+        // 最稳的办法：render 为 image，再嵌进新 PDF（保留文字层不可行）
+        // 这里采用 NSImage 渲染 → 嵌入新 PDF。文件会大一点（不再有矢量文字层），
+        // 但 376×230 凭证区域的 image 也只有 ~50KB，可以接受。
+
+        let crop = boardingPassCrop
+        let pageBounds = page.bounds(for: .mediaBox)
+
+        // 1) 渲染原 page 的 crop 区域为 CGImage
+        let dpi: CGFloat = 200
+        let scale = dpi / 72.0
+        let cropSize = CGSize(width: crop.width * scale, height: crop.height * scale)
+        let img = NSImage(size: pageBounds.size)
+        img.lockFocus()
+        NSColor.white.setFill()
+        NSBezierPath(rect: NSRect(origin: .zero, size: img.size)).fill()
+        page.draw(with: .mediaBox, to: NSGraphicsContext.current!.cgContext)
+        img.unlockFocus()
+        guard let tiff = img.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let fullImage = rep.cgImage else { return nil }
+
+        // 2) 裁切像素（CGImage 坐标系是 y 向上，但 PDF 渲染时 y 向下，所以 crop 取反）
+        let pixelCrop = CGRect(
+            x: crop.origin.x * scale,
+            y: (pageBounds.height - crop.origin.y - crop.height) * scale,
+            width: crop.width * scale,
+            height: crop.height * scale
+        )
+        guard let croppedImage = fullImage.cropping(to: pixelCrop) else { return nil }
+
+        // 3) 把 croppedImage 嵌进新 PDF（mediaBox = crop 区域）
+        let mutableData = NSMutableData()
+        guard let consumer = CGDataConsumer(data: mutableData as CFMutableData) else { return nil }
+        var mediaBox = CGRect(origin: .zero, size: crop.size)
+        guard let ctx = CGContext(consumer: consumer, mediaBox: &mediaBox, nil) else { return nil }
+
+        ctx.beginPDFPage(nil)
+        ctx.draw(croppedImage, in: CGRect(origin: .zero, size: crop.size))
+        ctx.endPDFPage()
+        ctx.closePDF()
+
+        return mutableData as Data
     }
 }

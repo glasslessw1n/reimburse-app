@@ -22,7 +22,9 @@ final class UploadViewModel: ObservableObject {
     @Published var stage: String = "准备上传…"
     @Published var lastError: String?
 
-    /// 单张图片的处理：原文件 → OCR → LLM → BillInfo
+    /// 单张图片的处理流程：
+    ///   上传 → OCR → LLM 识别类型 → boarding_pass 才裁切 → 替换 originals/ 里的 PDF
+    ///   → 整理 → 打包（用裁切后的版本）
     func processFile(_ url: URL, session: SessionManager, recognizer: LLMRecognizer) async -> BillInfo {
         let filename = url.lastPathComponent
         current = filename
@@ -67,7 +69,21 @@ final class UploadViewModel: ObservableObject {
             ocrText: ocrText, filename: filename, sourceFile: filename
         )
 
-        // 5. 转 BillInfo
+        // 5. boarding_pass → 裁切原 PDF，替换 originals/ 里的版本
+        //    这样后续打包用的就是裁切后的 PDF
+        if receipt.receiptType == .boardingPass,
+           suffix.lowercased() == "pdf",
+           let cropped = PDFRenderer.cropBoardingPass(pdfData: data) {
+            do {
+                stage = "裁切登机牌 \(filename)"
+                try session.saveOriginal(data: cropped, filename: filename)
+            } catch {
+                // 裁切替换失败不影响识别结果
+                print("[upload] 裁切替换失败: \(error)")
+            }
+        }
+
+        // 6. 转 BillInfo
         return toBillInfo(receipt: receipt, sourceFile: filename, rawText: ocrText)
     }
 
