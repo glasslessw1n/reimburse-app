@@ -207,11 +207,11 @@ final class SessionManager: ObservableObject {
         }
 
         // 6) 反向修：folio 的 city 可能是 LLM 误把"客人地址"当成酒店城市
-        //    如果 invoice 有真实城市（不在常驻地），folio 是常驻地 → 用 invoice 修 folio
+        //    如果 invoice.city 真实且与 folio.city 不同 → 用 invoice.city 修 folio
         let folioCity = folio.fields["city"]?.flatMap { $0 } ?? ""
         let invoiceCity = invoice.fields["city"]?.flatMap { $0 } ?? ""
         if !invoiceCity.isEmpty, !folioCity.isEmpty,
-           isHomeCity(folioCity), !isHomeCity(invoiceCity) {
+           invoiceCity != folioCity {
             folio.fields["city"] = invoiceCity
             folio.cities = [invoiceCity]
         }

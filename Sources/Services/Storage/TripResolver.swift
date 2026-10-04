@@ -57,19 +57,19 @@ enum TripResolver {
 
             // 决策：
             //   - 第一个 anchor → 开新 trip
-            //   - 当前 trip 已闭合 + from=home → 开新 trip
-            //   - 当前 trip 未闭合 + from=home → 这是上一段漏了返程，把它归到当前 trip（其实是拼回上一段）
-            //   - 当前 trip 未闭合 + to=home → 闭合当前 trip（标记 closed）
+            //   - 当前 trip 已闭合（任何 anchor）→ 开新 trip
+            //   - 当前 trip 未闭合 + from=home → 这是上一段漏了返程，把它归到当前 trip
+            //   - 当前 trip 未闭合 + to=home → 闭合当前 trip
             //   - 否则归当前 trip
             var startNew = false
             if currentIdx == nil {
                 startNew = true
+            } else if currentTripClosed {
+                // 上一段已闭合（收到返程）→ 不管下一个 anchor 是什么，都开新 trip
+                startNew = true
             } else if isHomeDeparture {
-                if currentTripClosed {
-                    startNew = true
-                } else {
-                    startNew = false
-                }
+                // 未闭合但 anchor 是 from=home → 是上一段漏了返程的补充，归到当前 trip
+                startNew = false
             } else if isHomeArrival {
                 // 收到返程 → 当前 trip 闭合
                 currentTripClosed = true
