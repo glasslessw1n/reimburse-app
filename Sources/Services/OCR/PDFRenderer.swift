@@ -21,7 +21,12 @@ enum PDFRenderer {
     private static let a4Height: CGFloat = 842
 
     /// 登机凭证在 A4 上的裁切区域 (x, y, width, height)，单位 pt
-    private static let boardingPassCrop = CGRect(x: 109, y: 96, width: 376, height: 230)
+    /// 基于视觉边界探测得到（"航旅纵横"电子登机凭证 A4 版式）：
+    /// - topY = 40 = 绿色条上方（包含"电子登机凭证"标题）
+    /// - bottomY = 234 = "乘机凭证"下缘
+    /// - leftX = 78 / rightX = 349 = 视觉最左/最右
+    /// - x=78, y=40, width=271, height=194
+    private static let boardingPassCrop = CGRect(x: 78, y: 40, width: 271, height: 194)
 
     /// 渲染所有页（可裁切 boarding pass 区域）
     /// - Parameter crop: 给非 nil 时，**第一页**按这个矩形裁切；后续页不裁切
