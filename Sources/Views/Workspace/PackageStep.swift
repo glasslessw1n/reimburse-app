@@ -14,7 +14,7 @@ final class PackageViewModel: ObservableObject {
     @Published var error: String?
     @Published var savedURL: URL?
 
-    func package(session: SessionManager, includeExcel: Bool = false) async {
+    func package(session: SessionManager, includeExcel: Bool) async {
         packing = true
         error = nil
         savedURL = nil
@@ -23,7 +23,7 @@ final class PackageViewModel: ObservableObject {
         do {
             // 1. 物理文件搬到 trips/
             try ZipPackager.arrangeFiles(session: session)
-            // 2. 打 ZIP
+            // 2. 打 ZIP（includeExcel 由勾选框控制）
             let url = try ZipPackager.package(session: session, includeExcel: includeExcel)
             savedURL = url
         } catch {
@@ -45,7 +45,7 @@ final class PackageViewModel: ObservableObject {
 struct PackageStep: View {
     @EnvironmentObject var state: AppState
     @StateObject private var vm = PackageViewModel()
-    @State private var includeExcel = false
+    @State private var includeExcel = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -113,9 +113,8 @@ struct PackageStep: View {
                     .font(.system(size: 13))
                     .foregroundColor(.secondary)
             }
-            Toggle("生成 Excel 明细（暂未实现）", isOn: $includeExcel)
+            Toggle("生成 报销明细.xlsx", isOn: $includeExcel)
                 .toggleStyle(.checkbox)
-                .disabled(true)
         }
     }
 
