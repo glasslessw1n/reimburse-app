@@ -91,6 +91,14 @@ final class SessionManager: ObservableObject {
         // 这里先做 hotel match，trip 分配留给后面。
 
         // ── 5. 行程归类 ──
+        // 注入 EXCLUDE_CITIES（常驻地）到 TripResolver，作为切分依据
+        let homeCitiesRaw = ProcessInfo.processInfo.environment["EXCLUDE_CITIES"] ?? ""
+        let homeCities = homeCitiesRaw
+            .split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        TripResolver.setHomeCities(homeCities)
+
         var (trips, local) = TripResolver.assignTrips(bills: bills)
 
         // ── 2/3/4. 字母/序号分配（在 trip/local 容器内部做，确保每个 trip 内独立）──
