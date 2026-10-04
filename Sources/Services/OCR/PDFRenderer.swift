@@ -22,11 +22,11 @@ enum PDFRenderer {
 
     /// 登机凭证在 A4 上的裁切区域 (x, y, width, height)，单位 pt
     /// 基于视觉边界探测得到（"航旅纵横"电子登机凭证 A4 版式）：
-    /// - topY = 40 = 绿色条上方（包含"电子登机凭证"标题）
+    /// - topY = 69 = 横向贯穿绿条的上界
     /// - bottomY = 234 = "乘机凭证"下缘
     /// - leftX = 78 / rightX = 349 = 视觉最左/最右
-    /// - x=78, y=40, width=271, height=194
-    private static let boardingPassCrop = CGRect(x: 78, y: 40, width: 271, height: 194)
+    /// - x=78, y=69, width=271, height=165
+    private static let boardingPassCrop = CGRect(x: 78, y: 69, width: 271, height: 165)
 
     /// 渲染所有页（可裁切 boarding pass 区域）
     /// - Parameter crop: 给非 nil 时，**第一页**按这个矩形裁切；后续页不裁切
