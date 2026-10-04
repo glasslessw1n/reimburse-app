@@ -4,13 +4,13 @@
 //
 //  行程分组算法：以"常驻地"（EXCLUDE_CITIES）作为切分依据。
 //
-//  算法：
+//  算法（按"从常驻地出发 → 回到常驻地"为一段行程）：
 //  1. 按日期排序所有 anchor 票据（交通票 + 酒店水单/发票 + 自驾行程单）
-//  2. 扫一遍 anchor，遇到以下情形开新 trip：
-//     - 该 anchor 是从常驻地出发（from_city ∈ homeCities）
-//     - 或该 anchor 是抵达常驻地（to_city ∈ homeCities）—— 当前 trip 已结束
-//  3. 当前 trip 没结束时，所有 anchor / non-anchor 按时间顺序归入当前 trip
-//  4. non-anchor（滴滴/餐饮/加油等）按时间就近归到对应 trip
+//  2. 扫一遍 anchor：
+//     - 若 from_city ∈ homeCities（从常驻地出发）→ 开新 trip
+//     - 若 to_city ∈ homeCities（回到常驻地）→ 当前 trip 结束（这个 anchor 归当前 trip）
+//     - 酒店、内部交通 → 归当前 trip
+//  3. 内部循环：一个 trip 内可能有多段（厦门→重庆→广州→深圳→梅州→潮汕→福州→重庆 = 整个 trip 2）
 //
 //  对应 core/trip_resolver.py 的 assign_trip，但用 EXCLUDE_CITIES 切分代替 CITY_DICT 启发式。
 //
@@ -46,6 +46,7 @@ enum TripResolver {
 
         var groups: [TripGroup] = []
         var currentIdx: Int? = nil
+        var currentTripClosed = false   // 当前 trip 是否已经收到 from=home 或 to=home 对从而闭合
 
         for anchor in anchors {
             let first = firstMMDD(of: anchor)
@@ -53,31 +54,28 @@ enum TripResolver {
 
             let isHomeDeparture = isHomeCity(anchor.fromCity)
             let isHomeArrival = isHomeCity(anchor.toCity)
-            let isHotel = anchor.billType == .hotelFolio || anchor.billType == .hotelInvoice
 
-            var shouldStartNewTrip = false
+            // 决策：
+            //   - 第一个 anchor → 开新 trip
+            //   - 当前 trip 已闭合 + from=home → 开新 trip
+            //   - 当前 trip 未闭合 + from=home → 这是上一段漏了返程，把它归到当前 trip（其实是拼回上一段）
+            //   - 当前 trip 未闭合 + to=home → 闭合当前 trip（标记 closed）
+            //   - 否则归当前 trip
+            var startNew = false
             if currentIdx == nil {
-                // 第一个 anchor → 总开新 trip
-                shouldStartNewTrip = true
-            } else if let idx = currentIdx {
-                // 当前已有 trip
-                if isHomeArrival {
-                    // 回到常驻地 → 当前 trip 结束（这个 anchor 归入新 trip 作为结束）
-                    shouldStartNewTrip = true
-                } else if isHomeDeparture {
-                    // 从常驻地出发 → 当前 trip 已结束（上一个 trip 应该回常驻地，没回就当连续）
-                    shouldStartNewTrip = true
-                } else if isHotel {
-                    // 酒店：归到当前 trip（不开新）
-                    shouldStartNewTrip = false
+                startNew = true
+            } else if isHomeDeparture {
+                if currentTripClosed {
+                    startNew = true
                 } else {
-                    // 内部交通：归到当前 trip
-                    shouldStartNewTrip = false
+                    startNew = false
                 }
-                _ = idx
+            } else if isHomeArrival {
+                // 收到返程 → 当前 trip 闭合
+                currentTripClosed = true
             }
 
-            if shouldStartNewTrip {
+            if startNew {
                 let last = lastMMDD(of: anchor, fallback: first)
                 groups.append(TripGroup(
                     key: "\(first)-\(last)",
@@ -85,9 +83,9 @@ enum TripResolver {
                     lastMMDD: last
                 ))
                 currentIdx = groups.count - 1
+                currentTripClosed = false
             }
 
-            // 把 anchor 加进当前 trip
             if let idx = currentIdx {
                 if first < groups[idx].firstMMDD { groups[idx].firstMMDD = first }
                 let aLast = lastMMDD(of: anchor, fallback: first)
@@ -98,14 +96,6 @@ enum TripResolver {
                 var a = anchor
                 a.targetSubdir = groups[idx].dirname
                 groups[idx].bills.append(a)
-            }
-        }
-
-        // 把没分配到 trip 的 anchor 标记为"其他"
-        for b in anchors {
-            if b.targetSubdir.isEmpty {
-                var bb = b
-                bb.targetSubdir = "其他"
             }
         }
 
@@ -120,7 +110,6 @@ enum TripResolver {
                     if d < bestDiff { bestIdx = i; bestDiff = d }
                 }
             } else if non.billType == .didiTrip || non.billType == .didiInvoice {
-                // 滴滴无日期 → 归第一个 trip
                 if !groups.isEmpty { bestIdx = 0; bestDiff = 0 }
             }
             if let idx = bestIdx, bestDiff <= 7 {
