@@ -90,8 +90,11 @@ enum TripResolver {
                 if first < groups[idx].firstMMDD { groups[idx].firstMMDD = first }
                 let aLast = lastMMDD(of: anchor, fallback: first)
                 if aLast > groups[idx].lastMMDD { groups[idx].lastMMDD = aLast }
-                for c in anchor.cities where !groups[idx].cities.contains(c) {
-                    groups[idx].cities.append(c)
+                // 过滤常驻地（cities 数组不应包含用户家）
+                for c in anchor.cities {
+                    if !groups[idx].cities.contains(c), !isHomeCity(c) {
+                        groups[idx].cities.append(c)
+                    }
                 }
                 var a = anchor
                 a.targetSubdir = groups[idx].dirname

@@ -160,13 +160,13 @@ final class SessionManager: ObservableObject {
         var usedFolios = Set<Int>()
 
         for iIdx in invoiceIdxs {
-            let inv = bills[iIdx]
+            var inv = bills[iIdx]
             guard inv.amount > 0 else { continue }
             for fIdx in folioIdxs where !usedFolios.contains(fIdx) {
                 guard bills[fIdx].amount > 0 else { continue }
-                var fol = bills[fIdx]
-                if abs(inv.amount - fol.amount) < 0.01 {
-                    enrich(invoice: &bills[iIdx], folio: &fol)
+                if abs(inv.amount - bills[fIdx].amount) < 0.01 {
+                    enrich(invoice: &inv, folio: &bills[fIdx])
+                    bills[iIdx] = inv  // 写回
                     usedFolios.insert(fIdx)
                     break
                 }
@@ -392,8 +392,8 @@ final class SessionManager: ObservableObject {
             return parts.isEmpty ? "机票行程单\(suf)" : parts.joined(separator: " ") + suf
 
         case .boardingPass:
-            let flightNo = f["flight_no"].flatMap { $0 } ?? ""
-            let parts = [dateMmdd, flightNo, route, "登机牌"].filter { !$0.isEmpty }
+            // MMDD 起始-到达 登机牌.pdf（不要航班号）
+            let parts = [dateMmdd, route, "登机牌"].filter { !$0.isEmpty }
             return parts.isEmpty ? "登机牌\(suf)" : parts.joined(separator: " ") + suf
 
         case .selfDriveSheet:

@@ -39,7 +39,7 @@ enum BillTypeFields {
             required: ["departure_date"],
             optional: ["flight_no", "origin_city", "destination_city", "seat", "passenger_name"],
             sortable: ["departure_date"],
-            fileNamePart: ["departure_date", "flight_no", "origin_city", "destination_city"]
+            fileNamePart: ["departure_date", "origin_city", "destination_city"]  // "MMDD 起始-到达 boarding_pass.pdf"
         ),
         .selfDriveSheet: BillFieldSpec(
             required: ["departure_date", "origin_city", "destination_city"],
