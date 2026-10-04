@@ -71,7 +71,8 @@ enum TripResolver {
             //   - 当前 trip 未闭合 + to=home → 闭合当前 trip + 追加 anchor
             //   - 当前 trip 已闭合 + from=home → 开新 trip（出发新段）
             //   - 当前 trip 未闭合 + from=home → 拼到当前 trip（漏返程补充）
-            //   - 否则 → 拼到当前 trip
+            //   - anchor 城市属于**之前某段 trip** → 归那个 trip（封闭后吸收）
+            //   - 否则 → 开新 trip
             var startNew = false
             if currentIdx == nil {
                 startNew = true
@@ -83,7 +84,33 @@ enum TripResolver {
                 // closed=true 时 from=home → 开新 trip；否则是漏返程补充到当前 trip
                 startNew = currentTripClosed
             } else {
-                startNew = false
+                // 闭合 trip 不再无脑吸收 orphan：
+                // 如果 anchor 的 from/to 城市**已经出现在某个 trip 的 cities 中** → 归那个 trip（补件）
+                // 否则 → 开新 trip
+                if currentTripClosed {
+                    var matchedIdx: Int? = nil
+                    for (i, g) in groups.enumerated() {
+                        let tripCities = Set(g.cities.map { $0.trimmingCharacters(in: .whitespaces).lowercased() })
+                        if !anchor.fromCity.isEmpty, tripCities.contains(anchor.fromCity.trimmingCharacters(in: .whitespaces).lowercased()),
+                           matchedIdx == nil {
+                            matchedIdx = i
+                        }
+                        if !anchor.toCity.isEmpty, tripCities.contains(anchor.toCity.trimmingCharacters(in: .whitespaces).lowercased()),
+                           matchedIdx == nil {
+                            matchedIdx = i
+                        }
+                    }
+                    if let mIdx = matchedIdx {
+                        // 命中任何一个 trip（含当前）：归那个 trip，补件
+                        currentIdx = mIdx
+                        currentTripClosed = false  // 重新激活（接受后续 anchor）
+                        startNew = false
+                    } else {
+                        startNew = true  // 无任何 trip 命中 → 开新
+                    }
+                } else {
+                    startNew = false
+                }
             }
 
             if startNew {

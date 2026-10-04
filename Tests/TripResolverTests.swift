@@ -171,6 +171,25 @@ final class TripResolverTests: XCTestCase {
         XCTAssertEqual(r.trips[0].lastMMDD, "0913")
     }
 
+    /// 6b. trip 已闭合后出现的 X→Y 内部 anchor（没有 home 出发/到达）
+    ///     必须**不开新 trip**——closed 状态表示该 trip 已结束；后续应另开新段
+    ///     真实场景：Trip A (0910-0912) 闭合后，0915 train 广州→深圳 出现在
+    ///     boardingPass 重庆→广州 **之前**（sort 时同日期）→ 这种"orphan"不应挂 Trip A
+    func testClosedTripDoesNotAbsorbOrphanInternalAnchor() {
+        let bills = [
+            // Trip A: 0910-0912 重庆→厦门→重庆
+            anchor(.boardingPass, from: "重庆", to: "厦门", date: "2026-09-10"),
+            anchor(.boardingPass, from: "厦门", to: "重庆", date: "2026-09-12"),
+            // Trip B 出发后才有 0915 trainTicket 内部跳转
+            anchor(.boardingPass, from: "重庆", to: "广州", date: "2026-09-15"), // 开 Trip B
+            anchor(.trainTicket, from: "广州", to: "深圳", date: "2026-09-15"), // 内部归 Trip B
+        ]
+        let r = TripResolver.assignTrips(bills: bills)
+        XCTAssertEqual(r.trips.count, 2)
+        XCTAssertEqual(r.trips[0].lastMMDD, "0912")
+        XCTAssertEqual(r.trips[1].bills.count, 2) // boardingPass 0915 + train 0915
+    }
+
     /// 7. 酒店水单作为 non-anchor → 按 ≤7 天就近归到当前 trip
     ///    （不再是 anchor → 不会影响 trip 的 first/last）
     func testHotelFolioCheckOutAttachesToTrip() {
