@@ -23,8 +23,9 @@ final class UploadViewModel: ObservableObject {
     @Published var lastError: String?
 
     /// 单张图片的处理流程：
-    ///   上传 → OCR → LLM 识别类型 → boarding_pass 才裁切 → 替换 originals/ 里的 PDF
-    ///   → 整理 → 打包（用裁切后的版本）
+    ///   上传 → 存原文件 → OCR (用登机牌裁切区域) → LLM 识别 receiptType →
+    ///   boarding_pass：判断大小 → 裁切 → 保存 → 重新 OCR (裁切版) → 重新 LLM → 输出
+    ///   其他：直接用首次 OCR/LLM 结果
     func processFile(_ url: URL, session: SessionManager, recognizer: LLMRecognizer) async -> BillInfo {
         let filename = url.lastPathComponent
         current = filename
@@ -63,28 +64,39 @@ final class UploadViewModel: ObservableObject {
             )
         }
 
-        // 4. LLM
-        stage = "LLM 抽取字段 \(filename)"
-        let receipt = await recognizer.recognize(
+        // 4. 第一次 LLM（用首次 OCR 文本识别 receiptType）
+        stage = "LLM 识别票据类型 \(filename)"
+        let firstReceipt = await recognizer.recognize(
             ocrText: ocrText, filename: filename, sourceFile: filename
         )
 
-        // 5. boarding_pass → 裁切原 PDF，替换 originals/ 里的版本
-        //    这样后续打包用的就是裁切后的 PDF
-        if receipt.receiptType == .boardingPass,
+        // 5. boarding_pass 且 PDF → 裁切 + 保存 + 重新 OCR + 重新 LLM
+        var finalReceipt = firstReceipt
+        if firstReceipt.receiptType == .boardingPass,
            suffix.lowercased() == "pdf",
            let cropped = PDFRenderer.cropBoardingPass(pdfData: data) {
             do {
                 stage = "裁切登机牌 \(filename)"
                 try session.saveOriginal(data: cropped, filename: filename)
             } catch {
-                // 裁切替换失败不影响识别结果
-                print("[upload] 裁切替换失败: \(error)")
+                print("[upload] 裁切保存失败: \(error)")
+            }
+            // 用裁切后的 PDF 重新 OCR
+            do {
+                stage = "重新 OCR 裁切版 \(filename)"
+                let croppedOcrText = try await TextExtractor.extract(data: cropped, suffix: suffix)
+                stage = "重新 LLM 抽取字段 \(filename)"
+                finalReceipt = await recognizer.recognize(
+                    ocrText: croppedOcrText, filename: filename, sourceFile: filename
+                )
+            } catch {
+                print("[upload] 裁切版 OCR 失败: \(error)")
+                // 失败就用首次 OCR/LLM 结果
             }
         }
 
         // 6. 转 BillInfo
-        return toBillInfo(receipt: receipt, sourceFile: filename, rawText: ocrText)
+        return toBillInfo(receipt: finalReceipt, sourceFile: filename, rawText: ocrText)
     }
 
     private func toBillInfo(receipt: Receipt, sourceFile: String, rawText: String) -> BillInfo {
