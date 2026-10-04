@@ -10,6 +10,7 @@
 		0329F39923DAFEF5302E8BD5 /* WorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DD2F6160F3D47DB5A982B8E /* WorkspaceView.swift */; };
 		0AFF7138CE5989F355DE2A9D /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02D26AA44CE2928CA2D33694 /* HomeView.swift */; };
 		1115B8D98ECB6E341B4A820D /* StatusBadges.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7800FD4AE526B046342036F5 /* StatusBadges.swift */; };
+		1D444EECF00BBCE865EA6197 /* TripResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07E881E9DD94F0C57860F11E /* TripResolverTests.swift */; };
 		1D85384536E5B7296A42F92C /* AnyJSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = B004F72802FC0388285B431B /* AnyJSONValue.swift */; };
 		395AD75D39379BF719BB974A /* Vision.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C9A2AE3A90638EB6D5EA53CC /* Vision.framework */; };
 		3B71741C93280FDBAC03BA3A /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 58B32F74C03031418712E9CE /* SwiftUI.framework */; };
@@ -47,6 +48,16 @@
 		E5EF3FC3044B091E33B00692 /* PopUpButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 335D178B4589F0B6F120B823 /* PopUpButton.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		D5BA27EAE7A52AE477D939E2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6B44A089E984AA4E995733A0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 46C2D1EB6AB9889234712E19;
+			remoteInfo = ReimbursementNative;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXCopyFilesBuildPhase section */
 		9F54B7ACA4C7429176BD80C8 /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
@@ -63,6 +74,7 @@
 /* Begin PBXFileReference section */
 		02D26AA44CE2928CA2D33694 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		07245D9B04F8CCA72A9A6813 /* PackageStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PackageStep.swift; sourceTree = "<group>"; };
+		07E881E9DD94F0C57860F11E /* TripResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripResolverTests.swift; sourceTree = "<group>"; };
 		278CCC82199CB227063EDC5C /* ProgressBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressBar.swift; sourceTree = "<group>"; };
 		335D178B4589F0B6F120B823 /* PopUpButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopUpButton.swift; sourceTree = "<group>"; };
 		359790A9A1DFFD1BD0A39FCD /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
@@ -85,6 +97,7 @@
 		83DE5B1CE51AD57D1B782ED9 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		97E8C8561D72EA8F12EAB735 /* LLMClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMClient.swift; sourceTree = "<group>"; };
 		9D1C724239B35B26A8D3629A /* BillRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BillRow.swift; sourceTree = "<group>"; };
+		A0395CC0E7985929335F360C /* ReimbursementNativeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ReimbursementNativeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AAC25B24004A13BD6E5F5E04 /* BillType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BillType.swift; sourceTree = "<group>"; };
 		ABA10AAA46A4AEE1CB3AA57C /* FinalizeStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinalizeStep.swift; sourceTree = "<group>"; };
 		B004F72802FC0388285B431B /* AnyJSONValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnyJSONValue.swift; sourceTree = "<group>"; };
@@ -156,6 +169,7 @@
 			isa = PBXGroup;
 			children = (
 				F306C54DDB21A4DF1B289C2E /* ReimbursementNative.app */,
+				A0395CC0E7985929335F360C /* ReimbursementNativeTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -202,6 +216,7 @@
 			children = (
 				97D2DD5799DF4D2CA2DE9D27 /* BuildAssets */,
 				74BBFCD0E5DDE72F4185948E /* Sources */,
+				EB7DEB517902EE97B7F8A68A /* Tests */,
 				8C304F6496685F38E9DE85C1 /* Frameworks */,
 				1CD8575E1FB5328DD2007696 /* Products */,
 			);
@@ -280,6 +295,14 @@
 			path = Components;
 			sourceTree = "<group>";
 		};
+		EB7DEB517902EE97B7F8A68A /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				07E881E9DD94F0C57860F11E /* TripResolverTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
 		EED63D53E251A406B191064E /* Packaging */ = {
 			isa = PBXGroup;
 			children = (
@@ -303,6 +326,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		3C9F94F47BC421DB5261A71B /* ReimbursementNativeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B4AC25D6C392ADBC0F00C0D5 /* Build configuration list for PBXNativeTarget "ReimbursementNativeTests" */;
+			buildPhases = (
+				A0FA42841476F5CB8689AA8A /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9C28CA2577971DF8D7A32507 /* PBXTargetDependency */,
+			);
+			name = ReimbursementNativeTests;
+			packageProductDependencies = (
+			);
+			productName = ReimbursementNativeTests;
+			productReference = A0395CC0E7985929335F360C /* ReimbursementNativeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		46C2D1EB6AB9889234712E19 /* ReimbursementNative */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 04464CEE4C9BB4BF0ADBC35D /* Build configuration list for PBXNativeTarget "ReimbursementNative" */;
@@ -331,6 +372,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					3C9F94F47BC421DB5261A71B = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
 					46C2D1EB6AB9889234712E19 = {
 						DevelopmentTeam = "";
 						ProvisioningStyle = Manual;
@@ -352,6 +397,7 @@
 			projectRoot = "";
 			targets = (
 				46C2D1EB6AB9889234712E19 /* ReimbursementNative */,
+				3C9F94F47BC421DB5261A71B /* ReimbursementNativeTests */,
 			);
 		};
 /* End PBXProject section */
@@ -395,7 +441,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A0FA42841476F5CB8689AA8A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1D444EECF00BBCE865EA6197 /* TripResolverTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		9C28CA2577971DF8D7A32507 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 46C2D1EB6AB9889234712E19 /* ReimbursementNative */;
+			targetProxy = D5BA27EAE7A52AE477D939E2 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		544D0225A797E57A78004538 /* Debug */ = {
@@ -404,6 +466,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/ReimbursementNative.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Sources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -412,8 +475,28 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.reimbursement;
 				SDKROOT = macosx;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
+		};
+		C86AB9FA74F24DCD9710C5AD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.reimbursement.tests;
+				PRODUCT_NAME = ReimbursementNativeTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/报销整理.app/Contents/MacOS/报销整理";
+			};
+			name = Release;
 		};
 		CB89E978711EEF632C000458 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -546,12 +629,32 @@
 			};
 			name = Debug;
 		};
+		D9D4F1079C306D8BF3A626E4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.reimbursement.tests;
+				PRODUCT_NAME = ReimbursementNativeTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/报销整理.app/Contents/MacOS/报销整理";
+			};
+			name = Debug;
+		};
 		DE5CED04AA30CA246112F552 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/ReimbursementNative.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Sources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -560,6 +663,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.reimbursement;
 				SDKROOT = macosx;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Release;
 		};
@@ -580,6 +684,15 @@
 			buildConfigurations = (
 				CEAC85EE3060A3F68975B201 /* Debug */,
 				CB89E978711EEF632C000458 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B4AC25D6C392ADBC0F00C0D5 /* Build configuration list for PBXNativeTarget "ReimbursementNativeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D9D4F1079C306D8BF3A626E4 /* Debug */,
+				C86AB9FA74F24DCD9710C5AD /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

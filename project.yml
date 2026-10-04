@@ -42,6 +42,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.local.reimbursement
         CODE_SIGN_ENTITLEMENTS: Sources/ReimbursementNative.entitlements
         COMBINE_HIDPI_IMAGES: "YES"
+        ENABLE_TESTABILITY: "YES"
+        SWIFT_OPTIMIZATION_LEVEL: -Onone
         LD_RUNPATH_SEARCH_PATHS:
           - "@executable_path/../Frameworks"
     dependencies:
@@ -51,3 +53,19 @@ targets:
       - sdk: PDFKit.framework           # M3 OCR 用
       - sdk: Vision.framework           # M3 OCR 用
       - sdk: UniformTypeIdentifiers.framework
+
+  ReimbursementNativeTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Tests
+    dependencies:
+      - target: ReimbursementNative
+    settings:
+      base:
+        PRODUCT_NAME: ReimbursementNativeTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.local.reimbursement.tests
+        GENERATE_INFOPLIST_FILE: "YES"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/报销整理.app/Contents/MacOS/报销整理"

@@ -29,10 +29,12 @@ enum TripResolver {
         homeCities = Set(cities.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }.filter { !$0.isEmpty })
     }
 
-    /// 锚点票据（能确定行程归属）
+    /// 锚点票据（能确定行程归属：交通票）
+    /// 酒店水单/发票**不算 anchor**——它们就近归到 trip（≤7 天），
+    /// 因为酒店发票只有 city、没有 from/to 城市，
+    /// 把它当 anchor 会导致"酒店发票在两个 trip 之间 → 强行归前一段 → 影响 last 日期"。
     private static let anchorTypes: Set<BillType> = [
-        .trainTicket, .flightItinerary, .boardingPass,
-        .hotelFolio, .hotelInvoice, .selfDriveSheet
+        .trainTicket, .flightItinerary, .boardingPass, .selfDriveSheet
     ]
 
     /// 主入口
@@ -173,10 +175,14 @@ enum TripResolver {
         homeCities.contains(city.trimmingCharacters(in: .whitespaces).lowercased())
     }
 
-    /// YYYY-MM-DD → MMDD
+    /// YYYY-MM-DD[THH:mm:ss] → MMDD
+    /// 例：`2026-09-10` → `0910`、`2026-09-10T10:30:00` → `0910`
     static func mmddFromDateString(_ s: String) -> String {
         guard s.count >= 10 else { return "" }
-        return String(s.suffix(5).prefix(5)).replacingOccurrences(of: "-", with: "")
+        // 取索引 5..<10 的字符（必是 "MM-DD"），再去掉 "-"
+        let idx = s.index(s.startIndex, offsetBy: 5)
+        let endIdx = s.index(s.startIndex, offsetBy: 10)
+        return s[idx..<endIdx].replacingOccurrences(of: "-", with: "")
     }
 
     /// 两个 MMDD 之间的天数差（同年内）
