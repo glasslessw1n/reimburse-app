@@ -66,35 +66,35 @@ final class SessionManager: ObservableObject {
     }
 
     /// 追加一张识别后的票据
+    /// 通用去重：按 (billType + date_range + from_city + to_city + 关键 fields) 生成 dedup key，
+    /// 同一物理凭证的 OCR/LLM 重复识别只保留先来那一张（保留 confidence 高的）。
     func ingest(_ bill: BillInfo) {
-        // 通用去重：boarding_pass 按完整 content key 去重
-        // 同一物理凭证的 OCR/LLM 重复识别只保留先来那一张（保留 confidence 高的）
-        if bill.billType == .boardingPass {
-            let billKey = Self.dedupKey(of: bill)
-            let dupIdx = manifest.bills.firstIndex { b in
-                guard b.billType == .boardingPass else { return false }
-                return Self.dedupKey(of: b) == billKey
+        let billKey = Self.dedupKey(of: bill)
+        if let dupIdx = manifest.bills.firstIndex(where: { Self.dedupKey(of: $0) == billKey }) {
+            if bill.confidence > manifest.bills[dupIdx].confidence {
+                manifest.bills[dupIdx] = bill
+                save()
             }
-            if dupIdx != nil {
-                if bill.confidence > manifest.bills[dupIdx!].confidence {
-                    manifest.bills[dupIdx!] = bill
-                    save()
-                }
-                return
-            }
+            return
         }
         manifest.bills.append(bill)
         if bill.needsReview { manifest.needsReviewCount += 1 }
         save()
     }
 
-    /// boarding_pass 去重 key：date_range + 起降城市 + 航班号 + 乘客名
-    /// OCR/LLM 偶尔会产出不同 dateMMDDs 长度（一张 ["0912"]，一张 ["0912","0915"]），
-    /// 但 date_range + 起降城市 + 航班号足够标识同一物理票。
+    /// 通用 dedup key：类型 + 日期范围 + 起降城市 + 关键 fields
+    /// OCR/LLM 可能让一张票产出略不同的 fields（如 date_mmdds 长度不同），
+    /// 用 JSON 化 fields 比较最稳。
+    /// hotel_folio / hotel_invoice 还会因 amount 配对产生多张，dedup key 含 amount 区分。
     private static func dedupKey(of bill: BillInfo) -> String {
-        let flightNo = bill.fields["flight_no"]?.flatMap { $0 } ?? ""
-        let passenger = bill.fields["passenger_name"]?.flatMap { $0 } ?? ""
-        return "\(bill.dateRange.start)_\(bill.dateRange.end)|\(bill.fromCity)|\(bill.toCity)|\(flightNo)|\(passenger)"
+        var canonicalFields = bill.fields
+        // 去空、order 无关（fields 是 dict）
+        let amountKey = String(format: "%.2f", bill.amount)
+        let flightNo = canonicalFields["flight_no"]?.flatMap { $0 } ?? ""
+        let passenger = canonicalFields["passenger_name"]?.flatMap { $0 } ?? ""
+        let roomNo = canonicalFields["room_no"]?.flatMap { $0 } ?? ""
+        let invoiceNo = canonicalFields["invoice_no"]?.flatMap { $0 } ?? ""
+        return "\(bill.billType.rawValue)|\(bill.dateRange.start)_\(bill.dateRange.end)|\(bill.fromCity)>\(bill.toCity)|\(amountKey)|\(flightNo)|\(passenger)|\(roomNo)|\(invoiceNo)"
     }
 
     /// finalize：完整流程（对应 core/collector.py:finalize_session）
@@ -200,10 +200,11 @@ final class SessionManager: ObservableObject {
     }
 
     /// 发票缺失字段用水单回填（不覆盖已有值）+ 日期偏移检测
+    /// 同时把 invoice 的 issue_date + nights 信息反向修 folio 的 date_range（folio 的 LLM 经常漏）
     private static func enrich(invoice: inout BillInfo, folio: inout BillInfo) {
         let fi = folio.fields
 
-        // 1) 日期范围
+        // 1) 日期范围（invoice 从 folio 补）
         if invoice.dateRange.start.isEmpty ||
            invoice.dateRange.start == invoice.dateRange.end {
             if !folio.dateRange.start.isEmpty {
@@ -212,14 +213,50 @@ final class SessionManager: ObservableObject {
                 invoice.fields["check_out_date"] = folio.dateRange.end.isEmpty ? folio.dateRange.start : folio.dateRange.end
             }
         }
-        // 2) 晚数
+        // 1b) folio 的 date_range 用 invoice 的 issue_date 修正（hotel folio LLM 经常把 issue 当 check_in）
+        let issueDate = invoice.fields["issue_date"]?.flatMap({ $0 })
+        if let issueDate = issueDate, issueDate.count >= 10,
+           TripResolver.mmddFromDateString(folio.dateRange.start).count == 4 {
+            let folioFirst = TripResolver.mmddFromDateString(folio.dateRange.start)
+            let issueMMDD = TripResolver.mmddFromDateString(issueDate)
+            // folio 的 check_out_date 缺失/不可信 → 用 invoice 的 issue_date
+            if folio.dateRange.end.isEmpty || folio.dateRange.end == folio.dateRange.start {
+                // folio 单日 → 推断为 check_in + nights
+                if let nights = fi["nights"]?.flatMap({ Int($0) }), nights > 0,
+                   let checkInMMDD = shiftMMDDBackward(issueMMDD, days: nights - 1) {
+                    folio.dateRange.start = mmddToDateString(checkInMMDD)
+                    folio.dateRange.end = mmddToDateString(issueMMDD)
+                    folio.fields["check_in_date"] = folio.dateRange.start
+                    folio.fields["check_out_date"] = folio.dateRange.end
+                } else {
+                    // 没有 nights 信息 → 用 folio.start 推断为 check_in
+                    folio.fields["check_out_date"] = issueDate
+                    folio.dateRange.end = issueDate
+                }
+            }
+        }
+
+        // 2) 晚数（invoice 从 folio 补）
         if (invoice.fields["nights"]?.flatMap { $0 } ?? "").isEmpty {
             if let n = fi["nights"]?.flatMap({ $0 }) { invoice.fields["nights"] = n }
         }
-        // 3) 城市
+        // 2b) folio 的 nights 从 invoice 推断（nights = issue_date - check_in_date + 1）
+        if (fi["nights"]?.flatMap({ $0 }) ?? "").isEmpty {
+            if let checkIn = fi["check_in_date"]?.flatMap({ $0 }),
+               let issue = invoice.fields["issue_date"]?.flatMap({ $0 }),
+               checkIn.count >= 10, issue.count >= 10 {
+                let nights = Self.diffDays(from: checkIn, to: issue) + 1
+                if nights > 0, nights < 30 {
+                    folio.fields["nights"] = String(nights)
+                }
+            }
+        }
+
+        // 3) 城市：invoice.city 为空时从 folio 补
         if invoice.cities.isEmpty, !folio.cities.isEmpty {
             invoice.cities = folio.cities
         }
+
         // 4) 房号/客人姓名/房型/酒店名
         for k in ["room_no", "guest_name", "room_type", "hotel_name"] {
             if (invoice.fields[k]?.flatMap { $0 } ?? "").isEmpty {
@@ -608,5 +645,33 @@ extension SessionManager {
             .map { String($0).trimmingCharacters(in: .whitespaces).lowercased() }
             .filter { !$0.isEmpty })
         return set.contains(city.trimmingCharacters(in: .whitespaces).lowercased())
+    }
+
+    /// MMDD → "MM-DD"
+    private static func mmddToDateString(_ mmdd: String) -> String {
+        guard mmdd.count == 4 else { return "" }
+        return "2026-\(mmdd.prefix(2))-\(mmdd.suffix(2))"  // 默认 2026（同 absDateDiff 假设）
+    }
+
+    /// MMDD 向前推 N 天（用于 hotel check_in 推断）
+    private static func shiftMMDDBackward(_ mmdd: String, days: Int) -> String? {
+        guard mmdd.count == 4,
+              let m = Int(mmdd.prefix(2)), let d = Int(mmdd.suffix(2)) else { return nil }
+        var date = Calendar.current.date(from: DateComponents(year: 2026, month: m, day: d)) ?? Date()
+        date = Calendar.current.date(byAdding: .day, value: -days, to: date) ?? date
+        let comps = Calendar.current.dateComponents([.month, .day], from: date)
+        guard let mo = comps.month, let dy = comps.day else { return nil }
+        return String(format: "%02d%02d", mo, dy)
+    }
+
+    /// 两个 YYYY-MM-DD 之间的天数差
+    private static func diffDays(from a: String, to b: String) -> Int {
+        guard a.count >= 10, b.count >= 10 else { return -1 }
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        df.timeZone = TimeZone(identifier: "UTC")
+        guard let d1 = df.date(from: String(a.prefix(10))),
+              let d2 = df.date(from: String(b.prefix(10))) else { return -1 }
+        return Calendar.current.dateComponents([.day], from: d1, to: d2).day ?? -1
     }
 }
