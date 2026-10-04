@@ -67,6 +67,28 @@ final class SessionManager: ObservableObject {
 
     /// 追加一张识别后的票据
     func ingest(_ bill: BillInfo) {
+        // 通用去重：boarding_pass 按 (date + from_city + to_city + flight_no) 去重
+        // 同一物理凭证被 OCR/LLM 重复识别时只保留先来那一张
+        if bill.billType == .boardingPass {
+            let dupIdx = manifest.bills.firstIndex { b in
+                guard b.billType == .boardingPass else { return false }
+                if b.dateMMDDs != bill.dateMMDDs { return false }
+                if b.fromCity != bill.fromCity { return false }
+                if b.toCity != bill.toCity { return false }
+                // flight_no 可能一空一实 → 视为同票
+                let bf = b.fields["flight_no"]?.flatMap { $0 } ?? ""
+                let af = bill.fields["flight_no"]?.flatMap { $0 } ?? ""
+                return bf == af || bf.isEmpty || af.isEmpty
+            }
+            if dupIdx != nil {
+                // 保留 confidence 更高的
+                if bill.confidence > manifest.bills[dupIdx!].confidence {
+                    manifest.bills[dupIdx!] = bill
+                    save()
+                }
+                return
+            }
+        }
         manifest.bills.append(bill)
         if bill.needsReview { manifest.needsReviewCount += 1 }
         save()
