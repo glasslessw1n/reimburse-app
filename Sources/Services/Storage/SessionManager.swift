@@ -100,7 +100,6 @@ final class SessionManager: ObservableObject {
         TripResolver.setHomeCities(homeCities)
 
         var (trips, local) = TripResolver.assignTrips(bills: bills)
-
         // ── 2/3/4. 字母/序号分配（在 trip/local 容器内部做，确保每个 trip 内独立）──
         for i in 0..<trips.count { Self.assignSequences(in: &trips[i].bills) }
         Self.assignSequences(in: &local)
@@ -164,10 +163,10 @@ final class SessionManager: ObservableObject {
             let inv = bills[iIdx]
             guard inv.amount > 0 else { continue }
             for fIdx in folioIdxs where !usedFolios.contains(fIdx) {
-                let fol = bills[fIdx]
-                guard fol.amount > 0 else { continue }
+                guard bills[fIdx].amount > 0 else { continue }
+                var fol = bills[fIdx]
                 if abs(inv.amount - fol.amount) < 0.01 {
-                    enrich(invoice: &bills[iIdx], folio: fol)
+                    enrich(invoice: &bills[iIdx], folio: &fol)
                     usedFolios.insert(fIdx)
                     break
                 }
@@ -176,7 +175,7 @@ final class SessionManager: ObservableObject {
     }
 
     /// 发票缺失字段用水单回填（不覆盖已有值）+ 日期偏移检测
-    private static func enrich(invoice: inout BillInfo, folio: BillInfo) {
+    private static func enrich(invoice: inout BillInfo, folio: inout BillInfo) {
         let fi = folio.fields
 
         // 1) 日期范围
@@ -205,6 +204,16 @@ final class SessionManager: ObservableObject {
         // 5) 品牌
         if (invoice.fields["brand"]?.flatMap { $0 } ?? "").isEmpty {
             if let v = fi["brand"]?.flatMap({ $0 }) { invoice.fields["brand"] = v }
+        }
+
+        // 6) 反向修：folio 的 city 可能是 LLM 误把"客人地址"当成酒店城市
+        //    如果 invoice 有真实城市（不在常驻地），folio 是常驻地 → 用 invoice 修 folio
+        let folioCity = folio.fields["city"]?.flatMap { $0 } ?? ""
+        let invoiceCity = invoice.fields["city"]?.flatMap { $0 } ?? ""
+        if !invoiceCity.isEmpty, !folioCity.isEmpty,
+           isHomeCity(folioCity), !isHomeCity(invoiceCity) {
+            folio.fields["city"] = invoiceCity
+            folio.cities = [invoiceCity]
         }
 
         // 6) 日期偏移检测
@@ -559,5 +568,20 @@ final class SessionManager: ObservableObject {
 enum Sessions {
     static func createNew() -> String {
         UUID().uuidString.lowercased()
+    }
+}
+
+// MARK: - 常驻地判断（用于 hotel folio/invoice city 修正）
+
+extension SessionManager {
+    /// 判断给定城市是否在 EXCLUDE_CITIES（常驻地）列表中
+    /// 用于修 hotel_folio 的"客人地址被误识别为酒店城市" bug
+    fileprivate static func isHomeCity(_ city: String) -> Bool {
+        let raw = ProcessInfo.processInfo.environment["EXCLUDE_CITIES"] ?? ""
+        let set = Set(raw
+            .split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespaces).lowercased() }
+            .filter { !$0.isEmpty })
+        return set.contains(city.trimmingCharacters(in: .whitespaces).lowercased())
     }
 }
