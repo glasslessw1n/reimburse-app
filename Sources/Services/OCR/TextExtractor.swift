@@ -48,6 +48,7 @@ enum TextExtractor {
     }
 
     /// PDF：先文字层 → 空就 OCR（最多前 maxOCRPages 页）
+    /// 文字层空时，PDF 可能是扫描的登机凭证（A4 整页）——做预裁切再 OCR。
     private static func extractPDF(data: Data, maxOCRPages: Int) async throws -> String {
         // 1. 试文字层
         let text = PDFRenderer.extractText(pdfData: data)
@@ -57,7 +58,13 @@ enum TextExtractor {
         }
 
         // 2. 文字层空 → 渲染图片 + OCR
-        let pages = PDFRenderer.render(pdfData: data)
+        // 2a. 检测是否是未裁切的登机凭证（A4 整页 + 文字层空 → 裁切凭证区域）
+        let crop: CGRect? = PDFRenderer.needsBoardingPassCrop(pdfData: data)
+            ? CGRect(x: 109, y: 96, width: 376, height: 230)
+            : nil
+
+        // 2b. 渲染（第一页用 crop 区域，其他页原样）
+        let pages = PDFRenderer.render(pdfData: data, crop: crop)
         let limited = Array(pages.prefix(maxOCRPages))
         var allText: [String] = []
         for (i, page) in limited.enumerated() {
