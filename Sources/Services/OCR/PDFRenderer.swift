@@ -21,9 +21,7 @@ enum PDFRenderer {
     private static let a4Height: CGFloat = 842
 
     /// 登机凭证在 A4 上的裁切区域 (x, y, width, height)，单位 pt
-    /// y 坐标系自下向上：登机牌位于 PDF 上半部分，y 起点 ~460，高度 ~270
-    /// (实测基于"航旅纵横"电子登机凭证 A4 版式)
-    private static let boardingPassCrop = CGRect(x: 100, y: 460, width: 395, height: 270)
+    private static let boardingPassCrop = CGRect(x: 109, y: 96, width: 376, height: 230)
 
     /// 渲染所有页（可裁切 boarding pass 区域）
     /// - Parameter crop: 给非 nil 时，**第一页**按这个矩形裁切；后续页不裁切
@@ -126,10 +124,11 @@ enum PDFRenderer {
               let rep = NSBitmapImageRep(data: tiff),
               let fullImage = rep.cgImage else { return nil }
 
-        // 2) 裁切像素（CGImage 坐标系是 y 向上，但 PDF 渲染时 y 向下，所以 crop 取反）
+        // 2) 裁切像素
+        // 与 PDFRenderer.render 的 crop 保持一致：直接 crop.origin.y * scale，不反转
         let pixelCrop = CGRect(
             x: crop.origin.x * scale,
-            y: (pageBounds.height - crop.origin.y - crop.height) * scale,
+            y: crop.origin.y * scale,
             width: crop.width * scale,
             height: crop.height * scale
         )

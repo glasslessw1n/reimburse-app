@@ -62,7 +62,7 @@ enum TextExtractor {
         // 2. 走 OCR 路径（文字层是扫描 PDF 残留模板字 / 没文字）
         // 2a. 检测是否是未裁切的登机凭证（A4 整页 → 裁切凭证区域）
         let crop: CGRect? = PDFRenderer.needsBoardingPassCrop(pdfData: data)
-            ? CGRect(x: 100, y: 460, width: 395, height: 270)
+            ? CGRect(x: 109, y: 96, width: 376, height: 230)
             : nil
 
         // 2b. 渲染（第一页用 crop 区域，其他页原样）
