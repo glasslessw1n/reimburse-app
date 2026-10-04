@@ -48,17 +48,19 @@ enum TextExtractor {
     }
 
     /// PDF：先文字层 → 空就 OCR（最多前 maxOCRPages 页）
-    /// 文字层空时，PDF 可能是扫描的登机凭证（A4 整页）——做预裁切再 OCR。
+    /// 文字层"少"时（< 50 字符，常见于扫描 PDF 残留 "电子登机凭证" 等模板字），
+    /// 也走 OCR + 登机凭证预裁切路径。
     private static func extractPDF(data: Data, maxOCRPages: Int) async throws -> String {
-        // 1. 试文字层
+        // 1. 试文字层（过滤 PDF 自带的模板字）
         let text = PDFRenderer.extractText(pdfData: data)
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
+        // 文字层字符数 > 100 才认为有真实内容
+        if trimmed.count > 100 {
             return trimmed
         }
 
-        // 2. 文字层空 → 渲染图片 + OCR
-        // 2a. 检测是否是未裁切的登机凭证（A4 整页 + 文字层空 → 裁切凭证区域）
+        // 2. 走 OCR 路径（文字层是扫描 PDF 残留模板字 / 没文字）
+        // 2a. 检测是否是未裁切的登机凭证（A4 整页 → 裁切凭证区域）
         let crop: CGRect? = PDFRenderer.needsBoardingPassCrop(pdfData: data)
             ? CGRect(x: 109, y: 96, width: 376, height: 230)
             : nil
