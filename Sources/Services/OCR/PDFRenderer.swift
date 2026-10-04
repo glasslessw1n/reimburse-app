@@ -25,36 +25,40 @@ enum PDFRenderer {
 
     /// 渲染所有页（可裁切 boarding pass 区域）
     /// - Parameter crop: 给非 nil 时，**第一页**按这个矩形裁切；后续页不裁切
+    /// - Note: 渲染策略 = 整页渲染 + CGImage.cropping(to:) 裁切
+    ///         不要试图用 ctx.translateBy + page.draw 在裁切画布上画（PDFKit 会重置变换，结果白图）
     static func render(pdfData: Data, dpi: CGFloat = 200, crop: CGRect? = nil) -> [CGImage] {
         guard let doc = PDFDocument(data: pdfData) else { return [] }
         var images: [CGImage] = []
+        let scale = dpi / 72.0
         for i in 0..<doc.pageCount {
             guard let page = doc.page(at: i) else { continue }
             let bounds = page.bounds(for: .mediaBox)
-            // 第一页 + 指定了 crop → 改用裁切区域作为画布
-            let drawRect = (i == 0 && crop != nil) ? crop! : bounds
 
-            let scale = dpi / 72.0
-            let pixelW = Int(drawRect.width * scale)
-            let pixelH = Int(drawRect.height * scale)
-            guard pixelW > 0, pixelH > 0 else { continue }
-
-            let img = NSImage(size: drawRect.size)
+            // 1) 先渲染整页（PDFKit 完整画一遍，不会被后续变换影响）
+            let img = NSImage(size: bounds.size)
             img.lockFocus()
             NSColor.white.setFill()
             NSBezierPath(rect: NSRect(origin: .zero, size: img.size)).fill()
-            let ctx = NSGraphicsContext.current!.cgContext
-            // 平移到裁切起点
-            ctx.saveGState()
-            ctx.translateBy(x: -drawRect.origin.x, y: -drawRect.origin.y)
-            page.draw(with: .mediaBox, to: ctx)
-            ctx.restoreGState()
+            page.draw(with: .mediaBox, to: NSGraphicsContext.current!.cgContext)
             img.unlockFocus()
-            if let tiff = img.tiffRepresentation,
-               let rep = NSBitmapImageRep(data: tiff),
-               let cg = rep.cgImage {
-                images.append(cg)
+            guard let tiff = img.tiffRepresentation,
+                  let rep = NSBitmapImageRep(data: tiff),
+                  var pageImage = rep.cgImage else { continue }
+
+            // 2) 第一页 + 指定了 crop → 在像素空间裁切
+            if i == 0, let crop = crop {
+                let pixelCrop = CGRect(
+                    x: crop.origin.x * scale,
+                    y: crop.origin.y * scale,
+                    width: crop.width * scale,
+                    height: crop.height * scale
+                )
+                if let cropped = pageImage.cropping(to: pixelCrop) {
+                    pageImage = cropped
+                }
             }
+            images.append(pageImage)
         }
         return images
     }
