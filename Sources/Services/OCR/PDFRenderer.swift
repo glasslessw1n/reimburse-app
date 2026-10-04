@@ -115,10 +115,10 @@ enum PDFRenderer {
         let crop = boardingPassCrop
         let pageBounds = page.bounds(for: .mediaBox)
 
-        // 1) 高分辨率渲染原 page（A4 整页）→ CGImage
-        //    dpi=300 保证裁切后的图片与原 PDF 同等清晰度（甚至更高）
-        let dpi: CGFloat = 300
+        // 1) 渲染原 page 的 crop 区域为 CGImage
+        let dpi: CGFloat = 200
         let scale = dpi / 72.0
+        let cropSize = CGSize(width: crop.width * scale, height: crop.height * scale)
         let img = NSImage(size: pageBounds.size)
         img.lockFocus()
         NSColor.white.setFill()
@@ -129,7 +129,7 @@ enum PDFRenderer {
               let rep = NSBitmapImageRep(data: tiff),
               let fullImage = rep.cgImage else { return nil }
 
-        // 2) 裁切像素（保持 300 dpi 高分辨率）
+        // 2) 裁切像素
         let pixelCrop = CGRect(
             x: crop.origin.x * scale,
             y: crop.origin.y * scale,
@@ -139,15 +139,10 @@ enum PDFRenderer {
         guard let croppedImage = fullImage.cropping(to: pixelCrop) else { return nil }
 
         // 3) 把 croppedImage 嵌进新 PDF（mediaBox = crop 区域）
-        //    使用高 JPEG 质量（0.95）输出，避免肉眼可见的压缩损失
         let mutableData = NSMutableData()
         guard let consumer = CGDataConsumer(data: mutableData as CFMutableData) else { return nil }
         var mediaBox = CGRect(origin: .zero, size: crop.size)
-        let auxInfo: [CFString: Any] = [
-            kCGPDFContextMediaBox: NSValue(rect: mediaBox),
-            "CompressionQuality" as CFString: 0.95
-        ]
-        guard let ctx = CGContext(consumer: consumer, mediaBox: &mediaBox, auxInfo as CFDictionary) else { return nil }
+        guard let ctx = CGContext(consumer: consumer, mediaBox: &mediaBox, nil) else { return nil }
 
         ctx.beginPDFPage(nil)
         ctx.draw(croppedImage, in: CGRect(origin: .zero, size: crop.size))
