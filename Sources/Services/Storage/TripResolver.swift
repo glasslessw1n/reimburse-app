@@ -64,7 +64,7 @@ enum TripResolver {
             let aFirst = dateMMDDPool(anchor).min() ?? first
             let aLast = dateMMDDPool(anchor).max() ?? first
 
-            // 决策（用显式 if/else 避免 else-if 链短路 isHomeArrival）：
+            // 决策（显式 if/else，避免 else-if 链短路）：
             //   - 第一个 anchor → 开新 trip
             //   - 当前 trip 未闭合 + to=home → 闭合当前 trip + 追加 anchor
             //   - 当前 trip 已闭合 + from=home → 开新 trip（出发新段）
@@ -74,11 +74,11 @@ enum TripResolver {
             if currentIdx == nil {
                 startNew = true
             } else if isHomeArrival && !currentTripClosed {
-                // 闭合当前 trip + 把 anchor 归到当前 trip（这是返程票据）
+                // 闭合当前 trip + 把 anchor 归到当前 trip
                 currentTripClosed = true
                 startNew = false
             } else if isHomeDeparture {
-                // 当前 trip 是否已闭合（上一段已返程）→ 出发新段；否则是漏返程补充
+                // closed=true 时 from=home → 开新 trip；否则是漏返程补充到当前 trip
                 startNew = currentTripClosed
             } else {
                 startNew = false
