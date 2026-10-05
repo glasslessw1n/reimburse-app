@@ -125,7 +125,7 @@ struct BillRow: View {
                     .background(Color.gray.opacity(0.03))
             }
         }
-        .background { VisualEffectView().clipShape(RoundedRectangle(cornerRadius: 6)).allowsHitTesting(false) }
+        .glassCard(cornerRadius: 6)
         .overlay(
             RoundedRectangle(cornerRadius: 6)
                 .fill(isHovering ? Color.gray.opacity(0.12) : Color.clear)

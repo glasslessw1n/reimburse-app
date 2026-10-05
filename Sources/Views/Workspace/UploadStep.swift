@@ -311,7 +311,7 @@ struct UploadStep: View {
             }
         }
         .padding(12)
-        .background { VisualEffectView().clipShape(RoundedRectangle(cornerRadius: 8)).allowsHitTesting(false) }
+        .glassCard(cornerRadius: 8)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)

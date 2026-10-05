@@ -150,7 +150,7 @@ private struct RecentSessionsSection: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background { VisualEffectView().clipShape(RoundedRectangle(cornerRadius: 12)).allowsHitTesting(false) }
+        .glassCard(cornerRadius: 12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)
@@ -227,7 +227,7 @@ private struct HowToCard: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background { VisualEffectView().clipShape(RoundedRectangle(cornerRadius: 12)).allowsHitTesting(false) }
+        .glassCard(cornerRadius: 12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)

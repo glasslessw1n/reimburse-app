@@ -48,4 +48,19 @@ extension View {
             .tint(.brandOrange)
             .hoverLift(shadowColor: .brandOrange)
     }
+
+    /// 卡片玻璃背景：macOS 26 用原生 Liquid Glass，旧版降级到 ultraThinMaterial
+    @ViewBuilder
+    func glassCard(cornerRadius: CGFloat = 12) -> some View {
+        if #available(macOS 26, *) {
+            self.background {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(.clear)
+                    .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+                    .allowsHitTesting(false)
+            }
+        } else {
+            self.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
+        }
+    }
 }

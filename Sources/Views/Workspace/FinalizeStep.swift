@@ -180,7 +180,7 @@ private struct TripCard: View {
                 .padding(.vertical, 8)
             }
         }
-        .background { VisualEffectView().clipShape(RoundedRectangle(cornerRadius: 10)).allowsHitTesting(false) }
+        .glassCard(cornerRadius: 10)
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)
@@ -241,7 +241,7 @@ private struct LocalCard: View {
                 .padding(.vertical, 8)
             }
         }
-        .background { VisualEffectView().clipShape(RoundedRectangle(cornerRadius: 10)).allowsHitTesting(false) }
+        .glassCard(cornerRadius: 10)
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)
