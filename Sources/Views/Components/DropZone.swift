@@ -12,6 +12,7 @@ import Synchronization
 struct DropZone: View {
     @Binding var isTargeted: Bool
     let onFiles: ([URL]) -> Void
+    @State private var isHovering = false
 
     var body: some View {
         ZStack {
@@ -26,7 +27,7 @@ struct DropZone: View {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(isTargeted
                               ? .brandOrange.opacity(0.06)
-                              : Color.gray.opacity(0.03))
+                              : (isHovering ? .brandOrange.opacity(0.03) : Color.gray.opacity(0.03)))
                 )
 
             VStack(spacing: 12) {
@@ -48,6 +49,7 @@ struct DropZone: View {
         .onTapGesture {
             openPicker()
         }
+        .onHover { isHovering = $0 }
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
