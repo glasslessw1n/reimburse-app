@@ -176,9 +176,6 @@ struct UploadStep: View {
 
             // 识别结果列表（已有结果时显示）
             if let session = state.currentSession, !session.manifest.bills.isEmpty {
-                Divider()
-                    .padding(.top, 16)
-
                 // 标题 + 计数
                 HStack {
                     Text("识别结果")
@@ -200,7 +197,8 @@ struct UploadStep: View {
                     .fixedSize()
                 }
                 .padding(.horizontal, 24)
-                .padding(.vertical, 8)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
 
                 // 列表（自适应垂直滚动）
                 ScrollView {
@@ -232,8 +230,6 @@ struct UploadStep: View {
             } else {
                 Spacer()
             }
-
-            Divider()
 
             // 底部按钮栏
             HStack {

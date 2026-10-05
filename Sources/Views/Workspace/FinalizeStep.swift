@@ -31,8 +31,6 @@ struct FinalizeStep: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
 
-            Divider()
-
             // 行程卡片列表
             ScrollView {
                 LazyVStack(spacing: 12) {
@@ -51,8 +49,7 @@ struct FinalizeStep: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
             }
-
-            Divider()
+            .frame(maxHeight: .infinity)
 
             // 底部按钮
             HStack {

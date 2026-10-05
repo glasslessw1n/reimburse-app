@@ -62,8 +62,6 @@ struct PackageStep: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            Divider()
-
             HStack {
                 Button("返回整理") {
                     state.advance(to: .finalize)
@@ -95,7 +93,7 @@ struct PackageStep: View {
                 }
             }
             .padding(.horizontal, 24)
-            .padding(.vertical, 16)
+            .padding(.vertical, 12)
         }
     }
 

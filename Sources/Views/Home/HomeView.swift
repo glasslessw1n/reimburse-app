@@ -33,7 +33,7 @@ struct HomeView: View {
                                 .font(.system(size: 56, weight: .bold))
                                 .foregroundStyle(.primary)
                             +
-                            Text("发票")
+                            Text("单据")
                                 .font(.system(size: 56, weight: .bold))
                                 .foregroundStyle(.brandOrange)
                             +
