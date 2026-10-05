@@ -54,16 +54,15 @@ private struct SettingsGearButton: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Button(action: action) {
-            Image(systemName: "gearshape.fill")
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
-                .rotationEffect(.degrees(!reduceMotion && hovering ? 60 : 0))
-                .scaleEffect(!reduceMotion && hovering ? 1.18 : 1.0)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: hovering)
-        .help("设置")
+        Image(systemName: "gearshape.fill")
+            .font(.system(size: 14))
+            .foregroundStyle(.secondary)
+            .rotationEffect(.degrees(!reduceMotion && hovering ? 60 : 0))
+            .scaleEffect(!reduceMotion && hovering ? 1.18 : 1.0)
+            .contentShape(Rectangle())
+            .onTapGesture { action() }
+            .onHover { hovering = $0 }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: hovering)
+            .help("设置")
     }
 }
