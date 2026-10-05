@@ -217,7 +217,7 @@ struct SettingsView: View {
             if #available(macOS 26, *) {
                 Rectangle()
                     .fill(.clear)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 0))
+                    .glassEffect(.clear, in: .rect(cornerRadius: 0))
             } else {
                 VisualEffectView(material: .hudWindow, blendingMode: .behindWindow, alpha: 1.0)
             }
