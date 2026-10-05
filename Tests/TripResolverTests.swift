@@ -308,4 +308,23 @@ struct TripResolverTests {
         #expect(TripResolver.absDateDiff("1229", "0103") <= 10)
         #expect(TripResolver.absDateDiff("0103", "1229") <= 10)
     }
+
+    /// 17. 跨年行程：2025-12-30 出发 → 2026-01-02 返回，应合并为一段且 first/last 顺序正确
+    @Test func crossYearTripOrdering() {
+        let bills = [
+            anchor(.boardingPass, from: "重庆", to: "厦门", date: "2025-12-30"),
+            anchor(.boardingPass, from: "厦门", to: "重庆", date: "2026-01-02"),
+        ]
+        let r = resolve(bills)
+        #expect(r.trips.count == 1, "跨年往返应合并为一段\n\(dumpTrips(r.trips))")
+        #expect(r.trips[0].firstMMDD == "1230", "首日应为 12-30（跨年排序正确）\n\(dumpTrips(r.trips))")
+        #expect(r.trips[0].lastMMDD == "0102", "末日应为 01-02\n\(dumpTrips(r.trips))")
+    }
+
+    /// 18. fullDateDiff 跨年精确天数
+    @Test func fullDateDiffCrossYear() {
+        #expect(TripResolver.fullDateDiff("2025-12-29", "2026-01-03") == 5)
+        #expect(TripResolver.fullDateDiff("2026-01-03", "2025-12-29") == 5)
+        #expect(TripResolver.fullDateDiff("2026-01-01", "2026-01-01") == 0)
+    }
 }

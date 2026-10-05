@@ -13,7 +13,9 @@ import Foundation
 
 /// 单张票据的扁平信息（识别后供前端/打包/填报用）
 struct BillInfo: Codable, Identifiable, Sendable {
-    var id: String { sourceFile + "_" + String(amount) }
+    /// 稳定唯一 ID（SwiftUI ForEach identity 用；不同票据绝不重复，也不随 amount 变化）
+    var uid: String
+    var id: String { uid }
 
     var billType: BillType
     var dateMMDDs: [String] = []            // 涉及的全部 MMDD（如 ["0303", "0304"]）
@@ -37,6 +39,7 @@ struct BillInfo: Codable, Identifiable, Sendable {
     var finalTargetName: String = ""
 
     enum CodingKeys: String, CodingKey {
+        case uid
         case billType = "bill_type"
         case dateMMDDs = "date_mmdds"
         case dateRange = "date_range"
@@ -65,6 +68,7 @@ struct BillInfo: Codable, Identifiable, Sendable {
         rawTextSnippet: String = "",
         error: String = ""
     ) {
+        self.uid = UUID().uuidString
         self.billType = billType
         self.amount = amount
         self.sourceFile = sourceFile
@@ -116,6 +120,8 @@ struct BillInfo: Codable, Identifiable, Sendable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        // 老 manifest 无 uid → 生成随机值兜底（一次性迁移，保存后即稳定）
+        self.uid = try c.decodeIfPresent(String.self, forKey: .uid) ?? UUID().uuidString
         let typeStr = try c.decode(String.self, forKey: .billType)
         self.billType = BillType(rawValue: typeStr) ?? .other
         self.dateMMDDs = try c.decodeIfPresent([String].self, forKey: .dateMMDDs) ?? []
@@ -141,6 +147,7 @@ struct BillInfo: Codable, Identifiable, Sendable {
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(uid, forKey: .uid)
         try c.encode(billType.rawValue, forKey: .billType)
         try c.encode(dateMMDDs, forKey: .dateMMDDs)
         try c.encode([dateRange.start, dateRange.end], forKey: .dateRange)

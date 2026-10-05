@@ -65,6 +65,27 @@ struct SessionManagerTests {
         #expect(bills[1].dateMMDDs == ["0926"])
     }
 
+    // MARK: - 酒店水单↔发票匹配
+
+    /// 金额相同的两家酒店，发票应按「酒店名相似度」匹配到正确那家（而非只看金额）
+    @Test func hotelMatchDisambiguatesSameAmountByName() {
+        var bills: [BillInfo] = [
+            BillInfo(billType: .hotelFolio, amount: 800, sourceFile: "folio_sh.pdf",
+                     fields: ["hotel_name": "上海外滩茂悦大酒店", "city": "上海",
+                              "check_in_date": "2026-09-10", "check_out_date": "2026-09-12"]),
+            BillInfo(billType: .hotelFolio, amount: 800, sourceFile: "folio_gz.pdf",
+                     fields: ["hotel_name": "广州珠江大酒店", "city": "广州",
+                              "check_in_date": "2026-09-10", "check_out_date": "2026-09-12"]),
+            BillInfo(billType: .hotelInvoice, amount: 800, sourceFile: "inv.pdf",
+                     fields: ["seller_name": "上海外滩茂悦大酒店", "issue_date": "2026-09-12"]),
+        ]
+        SessionManager.matchAndEnrichHotel(bills: &bills)
+        let invoice = bills[2]
+        // 应借用「上海外滩茂悦」水单的酒店名与城市，而非金额相同的广州那家
+        #expect(invoice.fields["hotel_name"] ?? nil == "上海外滩茂悦大酒店")
+        #expect(invoice.cities == ["上海"])
+    }
+
     // MARK: - 滴滴字母按时间先后编号
 
     @Test func assignSequencesChronologicalLetters() {

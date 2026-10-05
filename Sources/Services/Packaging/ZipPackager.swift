@@ -111,19 +111,21 @@ enum ZipPackager {
         return zipURL
     }
 
-    /// 在 finalize 之后把 bills 物理文件搬到 trips/{dirname}/{targetFilename}
+    /// 在 finalize 之后把 bills **复制**到 trips/{dirname}/{targetFilename}
+    /// - 幂等：先清掉上次的 trips/，再从 originals 复制，originals/ 全程不动，可重复打包
     static func arrangeFiles(session: SessionManager) throws {
         let root = session.rootDir
         let originals = root.appendingPathComponent("originals")
         let tripsDir = root.appendingPathComponent("trips")
-        try? FileManager.default.createDirectory(at: tripsDir, withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(at: tripsDir)
+        try FileManager.default.createDirectory(at: tripsDir, withIntermediateDirectories: true)
 
         // 行程内
         for trip in session.manifest.trips {
             let sub = tripsDir.appendingPathComponent(trip.dirname)
             try? FileManager.default.createDirectory(at: sub, withIntermediateDirectories: true)
             for bill in trip.bills {
-                try moveBill(bill, from: originals, to: sub, session: session)
+                try copyBill(bill, from: originals, to: sub, session: session)
             }
         }
 
@@ -132,12 +134,12 @@ enum ZipPackager {
             let localDir = tripsDir.appendingPathComponent("本地")
             try? FileManager.default.createDirectory(at: localDir, withIntermediateDirectories: true)
             for bill in session.manifest.local {
-                try moveBill(bill, from: originals, to: localDir, session: session)
+                try copyBill(bill, from: originals, to: localDir, session: session)
             }
         }
     }
 
-    private static func moveBill(
+    private static func copyBill(
         _ bill: BillInfo,
         from originals: URL,
         to sub: URL,
@@ -167,7 +169,7 @@ enum ZipPackager {
         }
 
         let dst = sub.appendingPathComponent(finalName)
-        try FileManager.default.moveItem(at: src, to: dst)
+        try FileManager.default.copyItem(at: src, to: dst)
     }
 
     private static func timestampString() -> String {

@@ -5,7 +5,7 @@
 //  自动从 BillTypeFields 生成字段说明的 prompt。
 //  对应 core/llm_prompts.py:_build_field_spec / FIELD_SPEC / FIELD_TYPE_HINTS / SYSTEM_PROMPT。
 //
-//  设计：所有票据类型共用同一份 prompt。LLM 看完 16 类型的字段表 + 顶层 Schema，
+//  设计：所有票据类型共用同一份 prompt。LLM 看完各类型的字段表 + 顶层 Schema，
 //  自己判断这张 OCR 文本属于哪一类、按那一类的字段填。
 //
 
@@ -81,7 +81,7 @@ enum LLMPrompts {
 }
 ```
 
-# 16 种票据类型
+# \(BillType.allCases.count) 种票据类型
 \(BillType.allCases.map { "- `\($0.rawValue)`（\($0.displayName)）" }.joined(separator: "\n"))
 
 # 各类型字段清单
@@ -131,7 +131,7 @@ enum LLMPrompts {
 # 角色
 你是中国票据分类专家。根据 OCR 文本判断票据属于哪一类。
 
-# 16 种票据类型
+# \(BillType.allCases.count) 种票据类型
 \(BillType.allCases.map { "- `\($0.rawValue)`（\($0.displayName)）" }.joined(separator: "\n"))
 
 # 输出（只输出 JSON）

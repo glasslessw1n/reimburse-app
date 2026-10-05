@@ -401,11 +401,21 @@ enum ExcelBuilder {
             totals["酒店", default: 0] += sub
         }
 
-        // 3. 滴滴
+        // 3. 滴滴：发票金额计入；无发票覆盖的行程单金额也计入，避免静默漏钱
         if !didiTrip.isEmpty || !didiInvoice.isEmpty {
             var didiTotal: Double = 0
+            var coveredTrips = Set<Int>()
             for inv in didiInvoice {
                 if inv.amount > 0 { didiTotal += inv.amount; tripTotal += inv.amount }
+                if let ti = didiTrip.indices.first(where: {
+                    !coveredTrips.contains($0)
+                        && didiTrip[$0].amount > 0
+                        && abs(didiTrip[$0].amount - inv.amount) < 0.01
+                }) { coveredTrips.insert(ti) }
+            }
+            for ti in didiTrip.indices where !coveredTrips.contains(ti) && didiTrip[ti].amount > 0 {
+                didiTotal += didiTrip[ti].amount
+                tripTotal += didiTrip[ti].amount
             }
             let lastArrival = transport.last?.toCity ?? ""
             let lastDate = transport.last.map { Self.firstMMDD($0) } ?? ""
@@ -518,8 +528,17 @@ enum ExcelBuilder {
         // 滴滴(本地)
         if !didiTrip.isEmpty || !didiInvoice.isEmpty {
             var didiTotal: Double = 0
+            var coveredTrips = Set<Int>()
             for inv in didiInvoice {
                 if inv.amount > 0 { didiTotal += inv.amount }
+                if let ti = didiTrip.indices.first(where: {
+                    !coveredTrips.contains($0)
+                        && didiTrip[$0].amount > 0
+                        && abs(didiTrip[$0].amount - inv.amount) < 0.01
+                }) { coveredTrips.insert(ti) }
+            }
+            for ti in didiTrip.indices where !coveredTrips.contains(ti) && didiTrip[ti].amount > 0 {
+                didiTotal += didiTrip[ti].amount
             }
             if didiTotal > 0 {
                 rows.append(Self.makeRow(idx: rowIdx, cells: [

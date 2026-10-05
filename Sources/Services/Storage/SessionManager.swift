@@ -184,17 +184,16 @@ final class SessionManager {
 
     /// 酒店水单 ↔ 发票匹配
     ///
-    /// 规则（按用户确认）：
-    /// 1. **金额完全相等**（0.01 容差）是唯一判定依据
-    /// 2. 匹配范围：水单 vs 所有发票（vat_*/hotel_invoice）
+    /// 规则：
+    /// 1. **金额完全相等**（0.01 容差）是必要条件
+    /// 2. 金额相同的多个候选 folio 用「酒店名/城市相似度」消歧
     /// 3. 匹配成功后，发票**借用**水单的日期范围 + 城市 + hotel_name，按 hotel 命名
-    /// 4. 没匹配上的发票保持原 vat 命名
-    private static func matchAndEnrichHotel(bills: inout [BillInfo]) {
+    /// 4. 没匹配上的发票保持原命名
+    static func matchAndEnrichHotel(bills: inout [BillInfo]) {
         var folioIdxs: [Int] = []
         var invoiceIdxs: [Int] = []
         for (i, b) in bills.enumerated() {
             if b.billType == .hotelFolio { folioIdxs.append(i) }
-            // 任何 vat/hotel 发票都可能配对
             switch b.billType {
             case .hotelInvoice:
                 invoiceIdxs.append(i)
@@ -209,16 +208,57 @@ final class SessionManager {
         for iIdx in invoiceIdxs {
             var inv = bills[iIdx]
             guard inv.amount > 0 else { continue }
-            for fIdx in folioIdxs where !usedFolios.contains(fIdx) {
-                guard bills[fIdx].amount > 0 else { continue }
-                if abs(inv.amount - bills[fIdx].amount) < 0.01 {
-                    enrich(invoice: &inv, folio: &bills[fIdx])
-                    bills[iIdx] = inv  // 写回
-                    usedFolios.insert(fIdx)
-                    break
-                }
+
+            // 金额相等是必要条件；多个候选 folio 用相似度消歧，避免金额相同的两家酒店误配。
+            let candidates = folioIdxs.filter { fIdx in
+                !usedFolios.contains(fIdx)
+                    && bills[fIdx].amount > 0
+                    && abs(inv.amount - bills[fIdx].amount) < 0.01
+            }
+            let bestIdx: Int?
+            if candidates.count == 1 {
+                bestIdx = candidates[0]
+            } else if candidates.count > 1 {
+                bestIdx = candidates.max(by: { a, b in
+                    Self.hotelSimilarity(inv, bills[a]) < Self.hotelSimilarity(inv, bills[b])
+                })
+            } else {
+                bestIdx = nil
+            }
+
+            if let fIdx = bestIdx {
+                enrich(invoice: &inv, folio: &bills[fIdx])
+                bills[iIdx] = inv  // 写回
+                usedFolios.insert(fIdx)
             }
         }
+    }
+
+    /// 酒店水单与发票的相似度（用于金额相同的多个候选间消歧）
+    /// 比较 hotel_name / seller_name 的字符相似度；城市一致时额外加分。
+    private static func hotelSimilarity(_ invoice: BillInfo, _ folio: BillInfo) -> Double {
+        let invNames = [
+            invoice.fields["hotel_name"]?.flatMap { $0 },
+            invoice.fields["seller_name"]?.flatMap { $0 }
+        ].compactMap { $0 }
+        let folioNames = [
+            folio.fields["hotel_name"]?.flatMap { $0 },
+            folio.fields["seller_name"]?.flatMap { $0 }
+        ].compactMap { $0 }
+
+        var best = 0.0
+        for a in invNames {
+            for b in folioNames where !b.isEmpty {
+                best = max(best, simpleSimilarity(a, b))
+            }
+        }
+        // 城市一致是强信号：加分而非封顶，让酒店名相似度仍能进一步区分
+        let invCity = invoice.fields["city"]?.flatMap { $0 } ?? invoice.cities.first ?? ""
+        let folioCity = folio.fields["city"]?.flatMap { $0 } ?? folio.cities.first ?? ""
+        if !invCity.isEmpty, invCity == folioCity {
+            best += 0.5
+        }
+        return best
     }
 
     /// 发票缺失字段用水单回填（不覆盖已有值）+ 日期偏移检测

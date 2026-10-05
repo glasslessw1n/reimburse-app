@@ -2,7 +2,7 @@
 //  BillType.swift
 //  报销整理Native
 //
-//  16 种票据类型枚举（对应 core/receipt_schema.py:BillType）。
+//  票据类型枚举（对应 core/receipt_schema.py:BillType）。
 //  新增类型时：
 //    1) 在本枚举加 case
 //    2) 在 BillTypeFields 加一项
