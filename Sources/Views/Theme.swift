@@ -53,12 +53,7 @@ extension View {
     @ViewBuilder
     func glassCard(cornerRadius: CGFloat = 12) -> some View {
         if #available(macOS 26, *) {
-            self.background {
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(.clear)
-                    .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
-                    .allowsHitTesting(false)
-            }
+            self.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
         } else {
             self.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
         }

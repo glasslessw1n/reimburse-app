@@ -39,7 +39,7 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             // 标题栏
             HStack {
-                Text("LLM 设置")
+                Text("设置")
                     .font(.title2.weight(.semibold))
                 Spacer()
                 Button("关闭") { dismiss() }
@@ -213,15 +213,7 @@ struct SettingsView: View {
             .padding(.vertical, 14)
         }
         .frame(width: 560)
-        .background {
-            if #available(macOS 26, *) {
-                Rectangle()
-                    .fill(.clear)
-                    .glassEffect(.clear, in: .rect(cornerRadius: 0))
-            } else {
-                VisualEffectView(material: .hudWindow, blendingMode: .behindWindow, alpha: 1.0)
-            }
-        }
+        .modifier(SettingsSheetBackground())
         .onAppear { loadFromStore() }
     }
 
@@ -343,6 +335,19 @@ struct SettingsView: View {
         } catch {
             testResult = "❌ 拉模型失败：\(error.localizedDescription)"
             testColor = .red
+        }
+    }
+}
+
+/// 设置弹窗背景：macOS 26 让系统自动应用 Liquid Glass，旧版降级到 HUD 窗口材质
+private struct SettingsSheetBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            content
+        } else {
+            content.background {
+                VisualEffectView(material: .hudWindow, blendingMode: .behindWindow, alpha: 1.0)
+            }
         }
     }
 }
