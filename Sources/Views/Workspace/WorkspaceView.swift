@@ -16,29 +16,14 @@ struct WorkspaceView: View {
     var body: some View {
         @Bindable var state = state
         VStack(spacing: 0) {
-            // 自定义 topbar（现代：返回 + segmented + 状态图标，避免 toolbar 的 Liquid Glass 背景）
-            HStack(spacing: 16) {
-                Button {
-                    state.clearCurrentSession()
-                    state.page = .home
-                } label: {
-                    Label("返回首页", systemImage: "chevron.left")
-                }
-                .buttonStyle(.borderless)
-                .help("返回首页")
-
+            // 窗口内顶部一行：三个状态图标（靠右），无分割线
+            HStack {
                 Spacer()
-
-                StepPicker(selection: $state.workspaceStep)
-
-                Spacer()
-
                 StatusBadges()
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 10)
-
-            Divider()
+            .padding(.top, 8)
+            .padding(.bottom, 6)
 
             Group {
                 switch state.workspaceStep {
@@ -51,6 +36,21 @@ struct WorkspaceView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    state.clearCurrentSession()
+                    state.page = .home
+                } label: {
+                    Label("返回首页", systemImage: "chevron.left")
+                }
+                .help("返回首页")
+            }
+
+            ToolbarItem(placement: .principal) {
+                StepPicker(selection: $state.workspaceStep)
+            }
         }
     }
 }

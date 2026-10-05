@@ -18,6 +18,7 @@ struct ReimbursementNativeApp: App {
                 .frame(minWidth: 960, minHeight: 640)
         }
         .windowStyle(.titleBar)
+        .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("关于 报销整理") {
