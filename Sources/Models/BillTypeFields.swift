@@ -75,21 +75,7 @@ enum BillTypeFields {
             required: ["hotel_name", "issue_date", "seller_name", "amount"],
             optional: ["check_in_date", "check_out_date", "city", "nights",
                        "invoice_no", "invoice_code", "seller_tax_no",
-                       "amount_excl_tax", "tax_amount"],
-            sortable: ["issue_date", "amount"],
-            fileNamePart: ["issue_date", "seller_name", "amount"]
-        ),
-        .vatInvoiceGeneral: BillFieldSpec(
-            required: ["issue_date", "seller_name", "amount"],
-            optional: ["invoice_no", "invoice_code", "buyer_name", "buyer_tax_no",
-                       "category", "amount_excl_tax", "tax_amount", "items"],
-            sortable: ["issue_date", "amount"],
-            fileNamePart: ["issue_date", "seller_name", "amount"]
-        ),
-        .vatInvoiceSpecial: BillFieldSpec(
-            required: ["issue_date", "seller_name", "buyer_name", "amount"],
-            optional: ["invoice_no", "invoice_code", "seller_tax_no", "buyer_tax_no",
-                       "category", "amount_excl_tax", "tax_amount", "items"],
+                       "amount_excl_tax", "tax_amount", "invoice_form"],
             sortable: ["issue_date", "amount"],
             fileNamePart: ["issue_date", "seller_name", "amount"]
         ),
@@ -119,7 +105,7 @@ enum BillTypeFields {
         ),
         .other: BillFieldSpec(
             required: [],
-            optional: ["amount", "issue_date", "merchant_name"],
+            optional: ["amount", "issue_date", "merchant_name", "invoice_form"],
             sortable: [],
             fileNamePart: ["issue_date", "amount"]
         ),

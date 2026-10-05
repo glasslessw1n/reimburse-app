@@ -54,6 +54,7 @@ enum LLMPrompts {
 - `provider`（网约车）：如 `滴滴出行`、`曹操出行`、`首汽约车`
 - `fuel_grade`（加油费）：如 `92#`、`95#`、`0#(柴油)`
 - `month`（通信费）：`YYYY-MM` 形式，如 `2026-03`
+- `invoice_form`（增值税发票）：`增值税普通发票` / `增值税专用发票` / `电子发票`
 """
 
     static let systemPrompt = """
@@ -62,7 +63,7 @@ enum LLMPrompts {
 - 火车票、机票行程单、登机牌、高速路行程单、出租车/网约车
 - 酒店水单（华住、锦江、首旅如家、亚朵、万豪、希尔顿、洲际、雅高、朗廷等所有品牌）
 - 酒店增值税发票（普票/专票/电子发票；不同省市格式略有差异）
-- 通用增值税普通发票 / 专用发票（电子发票/卷式发票）
+- 各类增值税发票（普票/专票/电子发票/卷式发票）：**按消费内容归类，不单独作为一类**（见下方「字段取舍规则」）
 - 滴滴/曹操/首汽等网约车行程单 + 电子发票
 - 加油费、通行费（ETC）、餐饮、通信费发票
 
@@ -97,11 +98,21 @@ enum LLMPrompts {
 - `confidence` 是你对自己抽取结果的自评（0.0-1.0）；必填字段全缺失时 < 0.5
 
 # 字段取舍规则（避免常见误判）
+- **增值税发票不是独立类型**：看到增值税普通发票/专用发票/电子发票/卷式发票时，`receipt_type` 按**消费内容**归类（住宿→`hotel_invoice`、餐饮→`dining`、打车→`didi_invoice`、加油→`gas_invoice`、通信→`telecom`、其他→`other`），**不要**填 `vat_invoice_general`/`vat_invoice_special`
 - **hotel_name / city（酒店）必须从酒店自身的抬头/地址/印章取**，**酒店的水单、发票大多会有酒店名称，XX酒店 XXHotel XXResort等等，而不是看见城市名就取做city**，**不要从客人会员资料或航班出发地取**
   - 错误示范：登机牌 OCR 文本里出现「常住地 重庆」→ 误把 city 填成"重庆"
   - 正确做法：city 字段填**酒店所在城市**（酒店名称 / 酒店地址 / 印章地区）
 - **departure_date / check_in_date 用实际消费日期**（酒店入住日 / 火车出发日 / 机票起飞日），不用开票日
 - **金额统一数字**（不要带 `¥`、`元`、千分位）；免税字段填 0，不要填 null
+
+# 示例（严格照此思路）
+1) 输入："MU5337 2026-09-10 重庆江北→厦门高崎 乘客 李*"
+   → {"receipt_type":"boarding_pass","confidence":0.96,"fields":{"departure_date":"2026-09-10","origin_city":"重庆","destination_city":"厦门","passenger_name":"李*"}}
+   （origin/destination 取航段城市，不是会员资料里的"常住地"）
+
+2) 输入："上海外滩茂悦大酒店 入住2026-09-10 离店2026-09-12 房费1200.00"
+   → {"receipt_type":"hotel_folio","confidence":0.97,"fields":{"hotel_name":"上海外滩茂悦大酒店","city":"上海","check_in_date":"2026-09-10","check_out_date":"2026-09-12","amount":1200.00}}
+   （city 从酒店抬头取"上海"，日期取实际入住/离店日，金额取数字）
 """
 
     /// 组装 user message（OCR 文本 + 文件名提示）
@@ -113,5 +124,67 @@ enum LLMPrompts {
         parts.append("--- OCR 文本 ---")
         parts.append(ocrText)
         return parts.joined(separator: "\n\n")
+    }
+
+    /// 第一段分类 prompt（短，只判类型，省 token）
+    static let classifySystemPrompt = """
+# 角色
+你是中国票据分类专家。根据 OCR 文本判断票据属于哪一类。
+
+# 16 种票据类型
+\(BillType.allCases.map { "- `\($0.rawValue)`（\($0.displayName)）" }.joined(separator: "\n"))
+
+# 输出（只输出 JSON）
+{"receipt_type": "票据类型枚举值", "confidence": 0.0}
+
+# 约束
+- 只输出 JSON，不要任何解释
+- 不确定时 confidence 给低分（<0.7），receipt_type 给 "other"
+"""
+
+    /// 第二段抽取 prompt（只针对某一类型，字段清单更聚焦、更少串类）
+    static func extractSystemPrompt(for type: BillType) -> String {
+        let s = BillTypeFields.spec(for: type)
+        var fieldLines: [String] = []
+        if !s.required.isEmpty {
+            fieldLines.append("- 必填: " + s.required.map { "`\($0)`" }.joined(separator: ", "))
+        }
+        if !s.optional.isEmpty {
+            fieldLines.append("- 可选: " + s.optional.map { "`\($0)`" }.joined(separator: ", "))
+        }
+        return """
+# 角色
+你是中国票据字段抽取专家，本次只处理「\(type.displayName)」。
+
+# 输出 Schema
+```json
+{
+  "receipt_type": "\(type.rawValue)",
+  "confidence": 0.0,
+  "fields": { ... 下方字段 ... },
+  "raw_text_excerpt": "OCR 原文前 500 字",
+  "error": "识别失败原因；成功时为空字符串"
+}
+```
+
+# 该类型字段清单
+\(fieldLines.joined(separator: "\n"))
+
+# 字段类型与示例
+\(fieldTypeHints)
+
+# 严格约束
+- 只输出 JSON，不要任何解释、注释、Markdown 代码块
+- 字段缺失用 `null`，**严禁**空字符串或 `"无"`
+- 日期统一 `YYYY-MM-DD`；时间统一 `HH:mm`
+- 金额统一数字（不要带 `¥`、`元`、千分位）
+- `confidence` 是对抽取结果的自评；必填字段全缺失时 < 0.5
+- `receipt_type` 固定为 `\(type.rawValue)`
+
+# 字段取舍规则（避免常见误判）
+- **hotel_name / city（酒店）从酒店自身抬头/地址/印章取**，不要从客人会员资料或航班出发地取
+- **departure_date / check_in_date 用实际消费日期**（入住日/出发日/起飞日），不用开票日
+- **金额统一数字**，免税字段填 0 不填 null
+"""
     }
 }

@@ -9,7 +9,7 @@
 import SwiftUI
 
 struct WorkspaceView: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) var state: AppState
 
     var body: some View {
         VStack(spacing: 0) {
@@ -51,9 +51,6 @@ struct WorkspaceView: View {
                     FinalizeStep()
                 case .package:
                     PackageStep()
-                default:
-                    // .recognize 已合并到 upload，理论上不可达
-                    UploadStep()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -147,5 +144,5 @@ private struct StepIndicator: View {
 
 #Preview {
     WorkspaceView()
-        .environmentObject(AppState())
+        .environment(AppState())
 }

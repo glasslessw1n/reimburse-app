@@ -4,10 +4,10 @@
 
 | | |
 |---|---|
-| **当前版本** | v0.1.0 |
-| **平台** | macOS 14 Sonoma+（Apple Silicon / Intel） |
-| **技术栈** | Swift 5.9 + SwiftUI + Apple Vision + PDFKit + URLSession |
-| **依赖** | Xcode 14+（含 xcodebuild） / [XcodeGen](https://github.com/yonaskolb/XcodeGen) |
+| **当前版本** | v2.0.0 |
+| **平台** | macOS 15 Sequoia+（Apple Silicon / Intel） |
+| **技术栈** | Swift 6 + SwiftUI（Observation）+ Apple Vision + PDFKit + URLSession |
+| **依赖** | Xcode 16+（含 xcodebuild） / [XcodeGen](https://github.com/yonaskolb/XcodeGen) |
 
 ---
 
@@ -16,7 +16,7 @@
 - **多 Provider LLM**：DeepSeek / OpenAI / 月之暗面 / 智谱 / Ollama / vLLM / 自定义
 - **零依赖 OCR**：Apple Vision（中文 + 英文，on-device，识别准确率高）
 - **PDF 处理**：PDFKit 优先取文字层，无文字层自动渲染图片 + OCR
-- **16 种票据类型**：火车票、机票行程单、登机牌、酒店水单/发票、VAT 普票/专票、滴滴行程/发票、餐饮、通信、加油、通行费等
+- **14 种票据类型**：火车票、机票行程单、登机牌、酒店水单/发票、滴滴行程/发票、餐饮、通信、加油、通行费等（增值税发票按消费内容自动归类）
 - **智能归类**：按日期 + 城市连通性自动合并差旅行程
 - **酒店水单/发票自动配对**：金额完全匹配时合并为一条住宿发票
 - **ZIP 打包**：保存到 `~/Downloads/`，自动跳过空目录
@@ -51,7 +51,7 @@
     │   └── AppState.swift
     │
     ├── Models/                       # 数据模型（Codable）
-    │   ├── BillType.swift             # 16 种票据类型枚举
+    │   ├── BillType.swift             # 14 种票据类型枚举
     │   ├── BillTypeFields.swift       # 每种票据的字段清单（required/optional/sortable/fileNamePart）
     │   ├── Receipt.swift              # LLM 输出的标准结构
     │   └── AnyJSONValue.swift         # LLM JSON 字段值归一化
@@ -100,7 +100,7 @@
 ### 前置
 
 ```bash
-# Xcode 14+（含 xcodebuild）
+# Xcode 16+（含 xcodebuild）
 xcodebuild -version
 
 # XcodeGen（生成 .xcodeproj）
@@ -201,7 +201,7 @@ ZIP 结构：
 
 ---
 
-## ✅ v0.1.0 已完成
+## ✅ 已完成
 
 - [x] **M1** 项目骨架（XcodeGen + SwiftUI App）
 - [x] **M2** 数据模型（BillType + BillTypeFields + Receipt + AnyJSONValue）

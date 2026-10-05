@@ -36,8 +36,6 @@ struct BillRow: View {
             return "滴滴行程"
         case .didiInvoice:
             return "滴滴发票"
-        case .vatInvoiceGeneral, .vatInvoiceSpecial:
-            return bill.fields["seller_name"]?.flatMap { $0 } ?? "发票"
         case .gasInvoice:
             return bill.fields["merchant_name"]?.flatMap { $0 } ?? "加油"
         case .tollInvoice:

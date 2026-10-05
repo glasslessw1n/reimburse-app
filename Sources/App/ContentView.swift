@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) var state: AppState
 
     var body: some View {
         ZStack {
@@ -27,5 +27,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .environmentObject(AppState())
+        .environment(AppState())
 }

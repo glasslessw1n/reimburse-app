@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct StatusBadges: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) var state: AppState
     @State private var showSettings = false
 
     var body: some View {
@@ -26,7 +26,7 @@ struct StatusBadges: View {
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
-                .environmentObject(state)
+                .environment(state)
         }
     }
 }

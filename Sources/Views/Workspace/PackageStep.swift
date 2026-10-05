@@ -9,10 +9,11 @@ import SwiftUI
 import AppKit
 
 @MainActor
-final class PackageViewModel: ObservableObject {
-    @Published var packing = false
-    @Published var error: String?
-    @Published var savedURL: URL?
+@Observable
+final class PackageViewModel {
+    var packing = false
+    var error: String?
+    var savedURL: URL?
 
     func package(session: SessionManager, includeExcel: Bool) async {
         packing = true
@@ -43,8 +44,8 @@ final class PackageViewModel: ObservableObject {
 }
 
 struct PackageStep: View {
-    @EnvironmentObject var state: AppState
-    @StateObject private var vm = PackageViewModel()
+    @Environment(AppState.self) var state: AppState
+    @State private var vm = PackageViewModel()
     @State private var includeExcel = true
 
     var body: some View {
@@ -188,5 +189,5 @@ struct PackageStep: View {
 
 #Preview {
     PackageStep()
-        .environmentObject(AppState())
+        .environment(AppState())
 }

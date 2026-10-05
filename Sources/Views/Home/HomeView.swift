@@ -9,7 +9,7 @@
 import SwiftUI
 
 struct HomeView: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) var state: AppState
 
     var body: some View {
         VStack(spacing: 0) {
@@ -169,5 +169,5 @@ private struct HowToRow: View {
 
 #Preview {
     HomeView()
-        .environmentObject(AppState())
+        .environment(AppState())
 }

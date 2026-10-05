@@ -10,7 +10,7 @@
 import SwiftUI
 
 struct FinalizeStep: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) var state: AppState
 
     var body: some View {
         VStack(spacing: 0) {
@@ -240,5 +240,5 @@ private struct LocalCard: View {
 
 #Preview {
     FinalizeStep()
-        .environmentObject(AppState())
+        .environment(AppState())
 }

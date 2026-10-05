@@ -19,10 +19,10 @@ enum ExcelBuilder {
     /// - Parameters:
     ///   - bills: 所有 BillInfo
     ///   - outputURL: 输出 .xlsx 路径
-    static func build(bills: [BillInfo], outputURL: URL) throws {
+    static func build(bills: [BillInfo], homeCities: Set<String>, outputURL: URL) throws {
         // 1. 构造内存中的所有 XML
         let workbookXML = buildWorkbook()
-        let sheetXML = buildSheet(bills: bills)
+        let sheetXML = buildSheet(bills: bills, homeCities: homeCities)
         let stylesXML = Self.stylesXML
 
         // 2. 临时目录写所有 XML 文件
@@ -180,10 +180,10 @@ enum ExcelBuilder {
     // MARK: - sheet1.xml 构建
 
     /// `xl/worksheets/sheet1.xml`
-    private static func buildSheet(bills: [BillInfo]) -> String {
-        let (trips, localBills) = TripResolver.assignTrips(bills: bills)
+    static func buildSheet(bills: [BillInfo], homeCities: Set<String>) -> String {
+        let (trips, localBills) = TripResolver.assignTrips(bills: bills, homeCities: homeCities)
         var totalsByCategory: [String: Double] = [
-            "自驾车": 0, "交通": 0, "酒店": 0, "滴滴": 0, "餐饮": 0, "通信": 0
+            "自驾车": 0, "交通": 0, "酒店": 0, "滴滴": 0, "餐饮": 0, "通信": 0, "其他": 0
         ]
 
         var rowsXML: [String] = []
@@ -267,10 +267,7 @@ enum ExcelBuilder {
             .sorted { Self.firstMMDD($0) < Self.firstMMDD($1) }
         let selfDrive = trip.bills.filter { $0.billType == .selfDriveSheet }
         let hotelFolios = trip.bills.filter { $0.billType == .hotelFolio }
-        let hotelInvoices = trip.bills.filter {
-            ($0.billType == .hotelInvoice) ||
-            ($0.billType == .vatInvoiceSpecial && $0.fields["hotel_name"] != nil)
-        }
+        let hotelInvoices = trip.bills.filter { $0.billType == .hotelInvoice }
         let hotels = (hotelFolios + hotelInvoices).sorted { $0.dateRange.start < $1.dateRange.start }
         let didiTrip = trip.bills.filter { $0.billType == .didiTrip }
         let didiInvoice = trip.bills.filter { $0.billType == .didiInvoice }
@@ -307,15 +304,6 @@ enum ExcelBuilder {
                 ]))
                 rowIdx += 1
             }
-            // 小计行（金额单独用 number cell）
-            var subCells: [(String, String, Int)] = [
-                ("A", "", 0),
-                ("B", "自驾车小计", 6),
-                ("D", "", 0),
-                ("E", "", 0)
-            ]
-            let subStr = sub > 0 ? Self.fmtNumber(sub) : "-"
-            _ = subCells  // placeholder for clarity
             // 拼小计行（C 列用 number cell）：手拼避免 cells 限制
             let subRow = "<row r=\"\(rowIdx)\">"
                 + Self.makeInlineStringCell(ref: "A\(rowIdx)", value: "", style: 0)
@@ -378,7 +366,7 @@ enum ExcelBuilder {
             for b in hotels {
                 let range = Self.hotelDateRange(b)
                 let city = b.fields["city"]?.flatMap { $0 } ?? b.fields["hotel_name"]?.flatMap { $0 } ?? ""
-                let hasInvoice = (b.billType == .hotelInvoice || b.billType == .vatInvoiceSpecial) ? "✓" : "✗ 缺发票"
+                let hasInvoice = (b.billType == .hotelInvoice) ? "✓" : "✗ 缺发票"
                 if b.amount > 0 { sub += b.amount; tripTotal += b.amount }
                 let row = "<row r=\"\(rowIdx)\">"
                     + Self.makeInlineStringCell(ref: "A\(rowIdx)", value: "酒店住宿", style: 0)
@@ -450,6 +438,19 @@ enum ExcelBuilder {
             totals["餐饮", default: 0] += sub
         }
 
+        // 5. 其他/兜底（vat 普票、非酒店专票、出租车、通信、other 等）——保证任何票据都出现在明细里
+        let generic = trip.bills.filter { Self.isGenericType($0) }
+        if !generic.isEmpty {
+            var sub: Double = 0
+            let sorted = generic.sorted { Self.firstMMDD($0) < Self.firstMMDD($1) }
+            for b in sorted {
+                if b.amount > 0 { sub += b.amount; tripTotal += b.amount }
+                rows.append(Self.genericRow(b, rowIdx))
+                rowIdx += 1
+            }
+            totals["其他", default: 0] += sub
+        }
+
         // 行程合计
         let grandText = tripTotal > 0
             ? "本段合计: ¥\(Self.fmtNumber(tripTotal))"
@@ -477,9 +478,8 @@ enum ExcelBuilder {
         let didiTrip = localBills.filter { $0.billType == .didiTrip }
         let didiInvoice = localBills.filter { $0.billType == .didiInvoice }
         let dining = localBills.filter { $0.billType == .dining }
-        let vat = localBills.filter {
-            [.vatInvoiceGeneral, .vatInvoiceSpecial, .hotelInvoice].contains($0.billType)
-        }
+        let vat = localBills.filter { $0.billType == .hotelInvoice }
+        var localTotal: Double = 0
 
         // 通信
         if !telecom.isEmpty {
@@ -505,6 +505,7 @@ enum ExcelBuilder {
             ]))
             rowIdx += 1
             totals["通信", default: 0] += sub
+            localTotal += sub
         }
 
         // 滴滴(本地)
@@ -523,6 +524,7 @@ enum ExcelBuilder {
                 ]))
                 rowIdx += 1
                 totals["滴滴", default: 0] += didiTotal
+                localTotal += didiTotal
             }
         }
 
@@ -543,6 +545,7 @@ enum ExcelBuilder {
                 rowIdx += 1
             }
             totals["餐饮", default: 0] += sub
+            localTotal += sub
         }
 
         // VAT(本地)
@@ -561,11 +564,25 @@ enum ExcelBuilder {
                 ]))
                 rowIdx += 1
             }
-            totals["交通", default: 0] += sub
+            totals["其他", default: 0] += sub
+            localTotal += sub
+        }
+
+        // 其他/兜底（酒店水单、出租车、加油、通行费、无日期交通票等）——保证不丢
+        let generic = localBills.filter { !Self.isLocalSpecificType($0) }
+        if !generic.isEmpty {
+            var sub: Double = 0
+            let sorted = generic.sorted { Self.firstMMDD($0) < Self.firstMMDD($1) }
+            for b in sorted {
+                if b.amount > 0 { sub += b.amount }
+                rows.append(Self.genericRow(b, rowIdx))
+                rowIdx += 1
+            }
+            totals["其他", default: 0] += sub
+            localTotal += sub
         }
 
         // 本地合计
-        let localTotal = (totals["通信"] ?? 0) + (totals["滴滴"] ?? 0) + (totals["餐饮"] ?? 0)
         let localText = localTotal > 0
             ? "本地合计: ¥\(Self.fmtNumber(localTotal))"
             : "本地合计: -"
@@ -588,6 +605,7 @@ enum ExcelBuilder {
         detail += "交通:\(Int(totals["交通"] ?? 0))  酒店:\(Int(totals["酒店"] ?? 0))  滴滴:\(Int(totals["滴滴"] ?? 0))"
         if (totals["餐饮"] ?? 0) > 0 { detail += "  餐饮:\(Int(totals["餐饮"] ?? 0))" }
         if (totals["通信"] ?? 0) > 0 { detail += "  通信:\(Int(totals["通信"] ?? 0))" }
+        if (totals["其他"] ?? 0) > 0 { detail += "  其他:\(Int(totals["其他"] ?? 0))" }
 
         let text = "报销总计: ¥\(Self.fmtNumber(grandTotal))  (\(detail))"
         rows.append(Self.makeMergedRow(idx: startRow, text: text, style: 7))
@@ -620,5 +638,47 @@ enum ExcelBuilder {
 
     private static func isTransportType(_ t: BillType) -> Bool {
         return t == .trainTicket || t == .flightItinerary || t == .boardingPass
+    }
+
+    /// 行程内未被任何具体分类渲染的票据（vat 普票、非酒店专票、出租车、通信、other）
+    private static func isGenericType(_ b: BillInfo) -> Bool {
+        switch b.billType {
+        case .trainTicket, .flightItinerary, .boardingPass,
+             .selfDriveSheet, .gasInvoice, .tollInvoice,
+             .hotelFolio, .hotelInvoice,
+             .didiTrip, .didiInvoice, .dining:
+            return false
+        case .taxiTransport, .telecom, .other:
+            return true
+        }
+    }
+
+    /// 本地费用里已被具体分类渲染的票据；其余走兜底
+    private static func isLocalSpecificType(_ b: BillInfo) -> Bool {
+        switch b.billType {
+        case .telecom, .didiTrip, .didiInvoice, .dining, .hotelInvoice:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// 兜底行：类型名 + 日期 + 金额 + 销方/商户名 + 原文件名
+    private static func genericRow(_ b: BillInfo, _ rowIdx: Int) -> String {
+        let cat = b.billType.displayName
+        let date = Self.firstMMDD(b)
+        let seller = b.fields["seller_name"]?.flatMap { $0 }
+            ?? b.fields["merchant_name"]?.flatMap { $0 }
+            ?? b.fields["hotel_name"]?.flatMap { $0 }
+            ?? ""
+        return "<row r=\"\(rowIdx)\">"
+            + Self.makeInlineStringCell(ref: "A\(rowIdx)", value: cat, style: 0)
+            + Self.makeInlineStringCell(ref: "B\(rowIdx)", value: date, style: 5)
+            + (b.amount > 0
+                ? Self.makeNumberCell(ref: "C\(rowIdx)", value: b.amount, style: 4)
+                : Self.makeInlineStringCell(ref: "C\(rowIdx)", value: "-", style: 5))
+            + Self.makeInlineStringCell(ref: "D\(rowIdx)", value: seller, style: 0)
+            + Self.makeInlineStringCell(ref: "E\(rowIdx)", value: b.sourceFile, style: 0)
+            + "</row>"
     }
 }

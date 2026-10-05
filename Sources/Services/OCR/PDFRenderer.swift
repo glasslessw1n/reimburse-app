@@ -32,26 +32,16 @@ enum PDFRenderer {
     /// - Parameter crop: 给非 nil 时，**第一页**按这个矩形裁切；后续页不裁切
     /// - Note: 渲染策略 = 整页渲染 + CGImage.cropping(to:) 裁切
     ///         不要试图用 ctx.translateBy + page.draw 在裁切画布上画（PDFKit 会重置变换，结果白图）
-    static func render(pdfData: Data, dpi: CGFloat = 200, crop: CGRect? = nil) -> [CGImage] {
+    static func render(pdfData: Data, dpi: CGFloat = 300, crop: CGRect? = nil) -> [CGImage] {
         guard let doc = PDFDocument(data: pdfData) else { return [] }
         var images: [CGImage] = []
         let scale = dpi / 72.0
         for i in 0..<doc.pageCount {
             guard let page = doc.page(at: i) else { continue }
             let bounds = page.bounds(for: .mediaBox)
+            guard var pageImage = renderPage(page, bounds: bounds, scale: scale) else { continue }
 
-            // 1) 先渲染整页（PDFKit 完整画一遍，不会被后续变换影响）
-            let img = NSImage(size: bounds.size)
-            img.lockFocus()
-            NSColor.white.setFill()
-            NSBezierPath(rect: NSRect(origin: .zero, size: img.size)).fill()
-            page.draw(with: .mediaBox, to: NSGraphicsContext.current!.cgContext)
-            img.unlockFocus()
-            guard let tiff = img.tiffRepresentation,
-                  let rep = NSBitmapImageRep(data: tiff),
-                  var pageImage = rep.cgImage else { continue }
-
-            // 2) 第一页 + 指定了 crop → 在像素空间裁切
+            // 第一页 + 指定了 crop → 在像素空间裁切
             if i == 0, let crop = crop {
                 let pixelCrop = CGRect(
                     x: crop.origin.x * scale,
@@ -66,6 +56,39 @@ enum PDFRenderer {
             images.append(pageImage)
         }
         return images
+    }
+
+    /// 把单个 PDF 页面按目标 DPI 渲染成 CGImage（用 NSBitmapImageRep 精确控制像素尺寸，
+    /// 避免 NSImage.lockFocus 受屏幕 backingScale 影响导致 DPI 失效/裁切错位）
+    private static func renderPage(_ page: PDFPage, bounds: CGRect, scale: CGFloat) -> CGImage? {
+        let pixelW = max(1, Int(bounds.width * scale))
+        let pixelH = max(1, Int(bounds.height * scale))
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelW,
+            pixelsHigh: pixelH,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else { return nil }
+        // rep.size 用 pt，让后续绘制坐标以 pt 计、自动按 scale 映射到像素
+        rep.size = bounds.size
+
+        NSGraphicsContext.saveGraphicsState()
+        guard let ctx = NSGraphicsContext(bitmapImageRep: rep) else {
+            NSGraphicsContext.restoreGraphicsState()
+            return nil
+        }
+        NSGraphicsContext.current = ctx
+        NSColor.white.setFill()
+        NSBezierPath(rect: NSRect(origin: .zero, size: bounds.size)).fill()
+        page.draw(with: .mediaBox, to: ctx.cgContext)
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.cgImage
     }
 
     /// 检测 PDF 是否需要登机凭证裁切
@@ -115,19 +138,10 @@ enum PDFRenderer {
         let crop = boardingPassCrop
         let pageBounds = page.bounds(for: .mediaBox)
 
-        // 1) 渲染原 page 的 crop 区域为 CGImage
-        let dpi: CGFloat = 200
+        // 1) 按 300 DPI 渲染整页为 CGImage（与 render() 一致）
+        let dpi: CGFloat = 300
         let scale = dpi / 72.0
-        let cropSize = CGSize(width: crop.width * scale, height: crop.height * scale)
-        let img = NSImage(size: pageBounds.size)
-        img.lockFocus()
-        NSColor.white.setFill()
-        NSBezierPath(rect: NSRect(origin: .zero, size: img.size)).fill()
-        page.draw(with: .mediaBox, to: NSGraphicsContext.current!.cgContext)
-        img.unlockFocus()
-        guard let tiff = img.tiffRepresentation,
-              let rep = NSBitmapImageRep(data: tiff),
-              let fullImage = rep.cgImage else { return nil }
+        guard let fullImage = renderPage(page, bounds: pageBounds, scale: scale) else { return nil }
 
         // 2) 裁切像素
         let pixelCrop = CGRect(

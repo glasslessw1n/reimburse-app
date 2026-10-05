@@ -107,7 +107,8 @@ struct Receipt: Codable, Sendable {
     var requiredCoverage: Double {
         let req = BillTypeFields.spec(for: receiptType).required
         guard !req.isEmpty else { return 1.0 }
-        let hit = req.filter { fields[$0] != nil }.count
+        // 用 field(_:) 展平双层 Optional，避免把「显式 null」误判为已覆盖
+        let hit = req.filter { field($0) != nil }.count
         return Double(hit) / Double(req.count)
     }
 

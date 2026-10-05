@@ -50,7 +50,8 @@ struct OCRService {
             }
             request.recognitionLevel = .accurate
             request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US"]
-            request.usesLanguageCorrection = true
+            // 发票里的票号、乘客名、酒店名是专有名词，语言纠错反而会把对的改错
+            request.usesLanguageCorrection = false
             request.revision = VNRecognizeTextRequestRevision3
 
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])

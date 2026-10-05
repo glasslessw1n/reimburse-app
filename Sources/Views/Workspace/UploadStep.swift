@@ -13,14 +13,15 @@
 import SwiftUI
 
 @MainActor
-final class UploadViewModel: ObservableObject {
-    @Published var isTargeted = false
-    @Published var processing = false
-    @Published var total = 0
-    @Published var done = 0
-    @Published var current: String = ""
-    @Published var stage: String = "准备上传…"
-    @Published var lastError: String?
+@Observable
+final class UploadViewModel {
+    var isTargeted = false
+    var processing = false
+    var total = 0
+    var done = 0
+    var current: String = ""
+    var stage: String = "准备上传…"
+    var lastError: String?
 
     /// 单张图片的处理流程：
     ///   上传 → 存原文件 → OCR → LLM 识别 receiptType → 打包 boarding_pass → BillInfo
@@ -40,9 +41,10 @@ final class UploadViewModel: ObservableObject {
             )
         }
 
-        // 2. 存原文件
+        // 2. 存原文件（同名自动改名，避免覆盖；sourceFile 用实际落盘名）
+        let sourceFilename: String
         do {
-            _ = try session.saveOriginal(data: data, filename: filename)
+            sourceFilename = try session.saveOriginal(data: data, filename: filename).lastPathComponent
         } catch {
             return BillInfo(
                 billType: .other, sourceFile: filename,
@@ -75,7 +77,7 @@ final class UploadViewModel: ObservableObject {
            let cropped = PDFRenderer.cropBoardingPass(pdfData: data) {
             do {
                 stage = "裁切登机牌 \(filename)"
-                try session.saveOriginal(data: cropped, filename: filename)
+                _ = try session.saveOriginal(data: cropped, filename: sourceFilename, overwrite: true)
             } catch {
                 // 裁切替换失败不影响识别结果
                 print("[upload] 裁切替换失败: \(error)")
@@ -83,7 +85,7 @@ final class UploadViewModel: ObservableObject {
         }
 
         // 6. 转 BillInfo
-        return toBillInfo(receipt: receipt, sourceFile: filename, rawText: ocrText)
+        return toBillInfo(receipt: receipt, sourceFile: sourceFilename, rawText: ocrText)
     }
 
     private func toBillInfo(receipt: Receipt, sourceFile: String, rawText: String) -> BillInfo {
@@ -109,8 +111,8 @@ final class UploadViewModel: ObservableObject {
 }
 
 struct UploadStep: View {
-    @EnvironmentObject var state: AppState
-    @StateObject private var vm = UploadViewModel()
+    @Environment(AppState.self) var state: AppState
+    @State private var vm = UploadViewModel()
     @State private var showClearConfirm = false
 
     var body: some View {
@@ -225,7 +227,7 @@ struct UploadStep: View {
         try? FileManager.default.removeItem(at: originals)
         try? FileManager.default.createDirectory(at: originals, withIntermediateDirectories: true)
         session.save()
-        // 强制刷新 @Published（SwiftUI 对 array 的同 identity mutation 不一定刷）
+        // 强制刷新（SwiftUI 对 array 的同 identity mutation 不一定刷）
         state.currentSession = session
     }
 
@@ -314,5 +316,5 @@ struct UploadStep: View {
 
 #Preview {
     UploadStep()
-        .environmentObject(AppState())
+        .environment(AppState())
 }

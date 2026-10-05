@@ -2,14 +2,14 @@ name: ReimbursementNative
 options:
   bundleIdPrefix: com.local
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "15.0"
   createIntermediateGroups: true
   groupSortPosition: top
 
 settings:
   base:
-    SWIFT_VERSION: "5.9"
-    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGNING_REQUIRED: "NO"
@@ -22,7 +22,7 @@ targets:
   ReimbursementNative:
     type: application
     platform: macOS
-    deploymentTarget: "14.0"
+    deploymentTarget: "15.0"
     sources:
       - path: Sources
         excludes:
@@ -42,10 +42,17 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.local.reimbursement
         CODE_SIGN_ENTITLEMENTS: Sources/ReimbursementNative.entitlements
         COMBINE_HIDPI_IMAGES: "YES"
-        ENABLE_TESTABILITY: "YES"
-        SWIFT_OPTIMIZATION_LEVEL: -Onone
         LD_RUNPATH_SEARCH_PATHS:
           - "@executable_path/../Frameworks"
+      configs:
+        Debug:
+          SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+          ENABLE_TESTABILITY: "YES"
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG"
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: "-O"
+          ENABLE_TESTABILITY: "NO"
+          SWIFT_COMPILATION_MODE: "wholemodule"
     dependencies:
       - sdk: SwiftUI.framework
       - sdk: AppKit.framework
@@ -57,7 +64,7 @@ targets:
   ReimbursementNativeTests:
     type: bundle.unit-test
     platform: macOS
-    deploymentTarget: "14.0"
+    deploymentTarget: "15.0"
     sources:
       - path: Tests
     dependencies:

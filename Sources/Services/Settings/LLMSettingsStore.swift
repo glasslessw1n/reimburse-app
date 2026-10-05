@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import Observation
 
 struct LLMSettings {
     var apiKey: String = ""
@@ -29,8 +30,9 @@ struct LLMSettings {
 }
 
 @MainActor
-final class LLMSettingsStore: ObservableObject {
-    @Published var settings: LLMSettings
+@Observable
+final class LLMSettingsStore {
+    var settings: LLMSettings
 
     private let envPath: URL
 

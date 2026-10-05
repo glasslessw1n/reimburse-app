@@ -24,9 +24,6 @@ enum BillType: String, Codable, CaseIterable, Sendable {
     // 酒店
     case hotelFolio = "hotel_folio"                 // 酒店水单/账单
     case hotelInvoice = "hotel_invoice"             // 酒店增值税发票
-    // 通用发票
-    case vatInvoiceGeneral = "vat_invoice_general"  // 增值税普通发票
-    case vatInvoiceSpecial = "vat_invoice_special"  // 增值税专用发票
     // 其他
     case gasInvoice = "gas_invoice"                 // 加油费
     case tollInvoice = "toll_invoice"               // 通行费
@@ -46,8 +43,6 @@ enum BillType: String, Codable, CaseIterable, Sendable {
         case .didiInvoice: return "滴滴发票"
         case .hotelFolio: return "酒店水单"
         case .hotelInvoice: return "酒店发票"
-        case .vatInvoiceGeneral: return "增值税普票"
-        case .vatInvoiceSpecial: return "增值税专票"
         case .gasInvoice: return "加油费"
         case .tollInvoice: return "通行费"
         case .dining: return "餐饮"
@@ -66,8 +61,6 @@ enum BillType: String, Codable, CaseIterable, Sendable {
             return "ride"
         case .hotelFolio, .hotelInvoice:
             return "hotel"
-        case .vatInvoiceGeneral, .vatInvoiceSpecial:
-            return "invoice"
         case .gasInvoice, .tollInvoice:
             return "fuel"
         case .dining, .telecom:

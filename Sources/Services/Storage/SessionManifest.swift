@@ -165,7 +165,9 @@ struct BillInfo: Codable, Identifiable, Sendable {
 
 /// 行程分组
 struct TripGroup: Codable, Identifiable, Sendable {
-    var id: String { key }
+    var id: String { uid }
+    /// 稳定唯一 ID（两个同日行程不再共用同一个 key 导致 SwiftUI 重复 ID）
+    var uid: String
     var key: String
     var firstMMDD: String
     var lastMMDD: String
@@ -173,7 +175,7 @@ struct TripGroup: Codable, Identifiable, Sendable {
     var bills: [BillInfo]
 
     enum CodingKeys: String, CodingKey {
-        case key
+        case uid, key
         case firstMMDD = "first_mmdd"
         case lastMMDD = "last_mmdd"
         case cities, bills
@@ -201,6 +203,7 @@ struct TripGroup: Codable, Identifiable, Sendable {
     }
 
     init(key: String, firstMMDD: String, lastMMDD: String, cities: [String] = [], bills: [BillInfo] = []) {
+        self.uid = UUID().uuidString
         self.key = key
         self.firstMMDD = firstMMDD
         self.lastMMDD = lastMMDD
@@ -210,6 +213,8 @@ struct TripGroup: Codable, Identifiable, Sendable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        // 老 manifest 没有 uid → 用 key 兜底，保证向后兼容
+        self.uid = try c.decodeIfPresent(String.self, forKey: .uid) ?? (try c.decode(String.self, forKey: .key))
         self.key = try c.decode(String.self, forKey: .key)
         self.firstMMDD = try c.decode(String.self, forKey: .firstMMDD)
         self.lastMMDD = try c.decode(String.self, forKey: .lastMMDD)

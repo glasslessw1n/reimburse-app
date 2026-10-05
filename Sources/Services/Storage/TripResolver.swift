@@ -21,12 +21,11 @@ import Foundation
 
 enum TripResolver {
 
-    /// 常驻地城市集合（小写比较）
-    private static var homeCities: Set<String> = []
-
-    /// 设置常驻地
-    static func setHomeCities(_ cities: [String]) {
-        homeCities = Set(cities.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }.filter { !$0.isEmpty })
+    /// 解析「常驻地」环境变量（逗号分隔），输出小写城市集合
+    static func parseHomeCities(_ raw: String) -> Set<String> {
+        Set(raw.split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespaces).lowercased() }
+            .filter { !$0.isEmpty })
     }
 
     /// 锚点票据（能确定行程归属：交通票）
@@ -38,7 +37,7 @@ enum TripResolver {
     ]
 
     /// 主入口
-    static func assignTrips(bills: [BillInfo]) -> (trips: [TripGroup], local: [BillInfo]) {
+    static func assignTrips(bills: [BillInfo], homeCities: Set<String>) -> (trips: [TripGroup], local: [BillInfo]) {
         var anchors: [BillInfo] = []
         var nonAnchors: [BillInfo] = []
         for b in bills {
@@ -56,13 +55,18 @@ enum TripResolver {
         var groups: [TripGroup] = []
         var currentIdx: Int? = nil
         var currentTripClosed = false
+        var undatedAnchors: [BillInfo] = []
 
         for anchor in anchors {
             let first = dateMMDDPool(anchor).min() ?? ""
-            guard !first.isEmpty else { continue }
+            guard !first.isEmpty else {
+                // 无日期的交通票无法参与切分，但要保留到「本地」，避免整张消失
+                undatedAnchors.append(anchor)
+                continue
+            }
 
-            let isHomeDeparture = isHomeCity(anchor.fromCity)
-            let isHomeArrival = isHomeCity(anchor.toCity)
+            let isHomeDeparture = isHomeCity(anchor.fromCity, in: homeCities)
+            let isHomeArrival = isHomeCity(anchor.toCity, in: homeCities)
             let aFirst = dateMMDDPool(anchor).min() ?? first
             let aLast = dateMMDDPool(anchor).max() ?? first
 
@@ -129,7 +133,7 @@ enum TripResolver {
                 if aLast > groups[idx].lastMMDD { groups[idx].lastMMDD = aLast }
                 // 加 city（过滤常驻地）
                 for c in anchor.cities {
-                    if !groups[idx].cities.contains(c), !isHomeCity(c) {
+                    if !groups[idx].cities.contains(c), !isHomeCity(c, in: homeCities) {
                         groups[idx].cities.append(c)
                     }
                 }
@@ -162,6 +166,12 @@ enum TripResolver {
                 b.targetSubdir = "本地"
                 local.append(b)
             }
+        }
+
+        // 无日期的 anchor 落到「本地」，保证不丢
+        for var u in undatedAnchors {
+            u.targetSubdir = "本地"
+            local.append(u)
         }
 
         // 重新刷一遍所有 bill.targetSubdir（merged 后 dirname 可能变）
@@ -198,8 +208,8 @@ enum TripResolver {
         return pool.sorted()
     }
 
-    private static func isHomeCity(_ city: String) -> Bool {
-        homeCities.contains(city.trimmingCharacters(in: .whitespaces).lowercased())
+    private static func isHomeCity(_ city: String, in home: Set<String>) -> Bool {
+        home.contains(city.trimmingCharacters(in: .whitespaces).lowercased())
     }
 
     /// YYYY-MM-DD[THH:mm:ss] → MMDD
@@ -225,6 +235,19 @@ enum TripResolver {
               let date2 = cal.date(from: DateComponents(year: year, month: m2, day: d2)) else {
             return 99
         }
-        return abs(cal.dateComponents([.day], from: date1, to: date2).day ?? 99)
+        var diff = abs(cal.dateComponents([.day], from: date1, to: date2).day ?? 99)
+        // 跨年启发式：同年内差距 >180 天，大概率是 12月↔1月 跨年；在 -1/0/+1 年的组合里取最小
+        if diff > 180 {
+            var best = diff
+            for dy1 in -1...1 {
+                for dy2 in -1...1 {
+                    guard let a = cal.date(from: DateComponents(year: year + dy1, month: m1, day: d1)),
+                          let b = cal.date(from: DateComponents(year: year + dy2, month: m2, day: d2)) else { continue }
+                    best = min(best, abs(cal.dateComponents([.day], from: a, to: b).day ?? 99))
+                }
+            }
+            diff = best
+        }
+        return diff
     }
 }

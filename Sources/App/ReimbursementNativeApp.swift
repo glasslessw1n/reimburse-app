@@ -9,12 +9,12 @@ import SwiftUI
 
 @main
 struct ReimbursementNativeApp: App {
-    @StateObject private var state = AppState()
+    @State private var state = AppState()
 
     var body: some Scene {
         WindowGroup("报销整理") {
             ContentView()
-                .environmentObject(state)
+                .environment(state)
                 .frame(minWidth: 960, minHeight: 640)
         }
         .windowStyle(.titleBar)

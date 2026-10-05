@@ -2,11 +2,10 @@
 //  AppState.swift
 //  报销整理Native
 //
-//  全局 ObservableObject：当前页面、LLM/OCR 可用性、会话状态、设置 store。
+//  全局 @Observable：当前页面、LLM/OCR 可用性、会话状态、设置 store。
 //
 
 import SwiftUI
-import Combine
 
 /// 应用页面状态机
 enum AppPage: Equatable {
@@ -31,19 +30,20 @@ enum WorkspaceStep: Int, CaseIterable, Equatable {
 }
 
 @MainActor
-final class AppState: ObservableObject {
-    @Published var page: AppPage = .home
+@Observable
+final class AppState {
+    var page: AppPage = .home
 
     /// Workspace 内的步骤（每次新会话从 upload 开始）
-    @Published var workspaceStep: WorkspaceStep = .upload
+    var workspaceStep: WorkspaceStep = .upload
 
     /// 服务可用性
-    @Published var ocrAvailable: Bool = true
-    @Published var llmAvailable: Bool = false
-    @Published var llmConfigured: Bool = false
+    var ocrAvailable: Bool = true
+    var llmAvailable: Bool = false
+    var llmConfigured: Bool = false
 
     /// 当前 session
-    @Published var currentSession: SessionManager?
+    var currentSession: SessionManager?
 
     /// 全局设置
     let settingsStore = LLMSettingsStore()

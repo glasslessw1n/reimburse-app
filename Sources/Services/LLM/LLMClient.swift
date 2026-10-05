@@ -192,13 +192,16 @@ enum JSONParser {
             return obj
         }
 
-        // 2. 剥离 markdown ```json ... ```
+        // 2. 剥离 markdown ```json ... ```（只去掉围栏首行的语言标记，不动正文）
         if let range = trimmed.range(of: "```"),
            let endRange = trimmed[range.upperBound...].range(of: "```") {
-            let inner = trimmed[range.upperBound..<endRange.lowerBound]
-                .trimmingCharacters(in: CharacterSet(charactersIn: "\n"))
-                .replacingOccurrences(of: "json", with: "")
+            var inner = String(trimmed[range.upperBound..<endRange.lowerBound])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            // 首行若为 json 语言标记则去掉该行，避免误删正文里出现的 "json"
+            if inner.lowercased().hasPrefix("json") {
+                inner = String(inner.dropFirst("json".count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
             if let data = inner.data(using: .utf8),
                let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 return obj

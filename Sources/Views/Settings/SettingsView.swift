@@ -12,7 +12,7 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) var state: AppState
 
     @State private var provider: LLMProvider = .deepseek
     @State private var apiKey: String = ""
@@ -354,5 +354,5 @@ struct SettingsView: View {
 
 #Preview {
     SettingsView()
-        .environmentObject(AppState())
+        .environment(AppState())
 }

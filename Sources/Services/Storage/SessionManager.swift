@@ -16,10 +16,12 @@
 //
 
 import Foundation
+import Observation
 
 @MainActor
-final class SessionManager: ObservableObject {
-    @Published var manifest: SessionManifest
+@Observable
+final class SessionManager {
+    var manifest: SessionManifest
 
     let sid: String
     let rootDir: URL
@@ -58,9 +60,27 @@ final class SessionManager: ObservableObject {
     // MARK: - 写入
 
     /// 把原始文件写到 originals/
-    func saveOriginal(data: Data, filename: String) throws -> URL {
+    /// - Parameter overwrite: true 时直接覆盖同名文件（用于登机牌裁切替换）；false 时同名自动追加 -2/-3 后缀，避免互相覆盖
+    func saveOriginal(data: Data, filename: String, overwrite: Bool = false) throws -> URL {
         let safe = filename.replacingOccurrences(of: "/", with: "_")
-        let url = rootDir.appendingPathComponent("originals").appendingPathComponent(safe)
+        let dir = rootDir.appendingPathComponent("originals")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        if overwrite {
+            let url = dir.appendingPathComponent(safe)
+            try data.write(to: url, options: .atomic)
+            return url
+        }
+
+        var url = dir.appendingPathComponent(safe)
+        let ext = (safe as NSString).pathExtension
+        let base = (safe as NSString).deletingPathExtension
+        var n = 2
+        while FileManager.default.fileExists(atPath: url.path) {
+            let name = ext.isEmpty ? "\(base)-\(n)" : "\(base)-\(n).\(ext)"
+            url = dir.appendingPathComponent(name)
+            n += 1
+        }
         try data.write(to: url, options: .atomic)
         return url
     }
@@ -87,14 +107,15 @@ final class SessionManager: ObservableObject {
     /// 用 JSON 化 fields 比较最稳。
     /// hotel_folio / hotel_invoice 还会因 amount 配对产生多张，dedup key 含 amount 区分。
     private static func dedupKey(of bill: BillInfo) -> String {
-        var canonicalFields = bill.fields
+        let canonicalFields = bill.fields
         // 去空、order 无关（fields 是 dict）
         let amountKey = String(format: "%.2f", bill.amount)
         let flightNo = canonicalFields["flight_no"]?.flatMap { $0 } ?? ""
         let passenger = canonicalFields["passenger_name"]?.flatMap { $0 } ?? ""
         let roomNo = canonicalFields["room_no"]?.flatMap { $0 } ?? ""
         let invoiceNo = canonicalFields["invoice_no"]?.flatMap { $0 } ?? ""
-        return "\(bill.billType.rawValue)|\(bill.dateRange.start)_\(bill.dateRange.end)|\(bill.fromCity)>\(bill.toCity)|\(amountKey)|\(flightNo)|\(passenger)|\(roomNo)|\(invoiceNo)"
+        // 以 sourceFile 打头：不同文件绝不互相去重，只有同一份文件重复识别才折叠
+        return "\(bill.sourceFile)|\(bill.billType.rawValue)|\(bill.dateRange.start)_\(bill.dateRange.end)|\(bill.fromCity)>\(bill.toCity)|\(amountKey)|\(flightNo)|\(passenger)|\(roomNo)|\(invoiceNo)"
     }
 
     /// finalize：完整流程（对应 core/collector.py:finalize_session）
@@ -110,21 +131,20 @@ final class SessionManager: ObservableObject {
         // ── 1. hotel invoice ↔ folio match ──
         Self.matchAndEnrichHotel(bills: &bills)
 
+        // ── 2. didi 发票 ↔ 行程单 金额配对：让发票继承行程单日期，确保归到同一行程 ──
+        Self.linkDidiInvoices(bills: &bills)
+
         // ── 2/3. didi 字母分配（每个 trip 内部 / local 内部各自分配） ──
         // TripResolver 之前需要 bills 上的 didiLetter 字段已就绪，但 TripResolver 不看 didiLetter；
         // 所以 didi 字母在 TripResolver 之后、文件 move 之前分配也可以。
         // 这里先做 hotel match，trip 分配留给后面。
 
         // ── 5. 行程归类 ──
-        // 注入 EXCLUDE_CITIES（常驻地）到 TripResolver，作为切分依据
+        // 注入 EXCLUDE_CITIES（常驻地）作为切分依据
         let homeCitiesRaw = ProcessInfo.processInfo.environment["EXCLUDE_CITIES"] ?? ""
-        let homeCities = homeCitiesRaw
-            .split(separator: ",")
-            .map { String($0).trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        TripResolver.setHomeCities(homeCities)
+        let homeCities = TripResolver.parseHomeCities(homeCitiesRaw)
 
-        var (trips, local) = TripResolver.assignTrips(bills: bills)
+        var (trips, local) = TripResolver.assignTrips(bills: bills, homeCities: homeCities)
         // ── 2/3/4. 字母/序号分配（在 trip/local 容器内部做，确保每个 trip 内独立）──
         for i in 0..<trips.count { Self.assignSequences(in: &trips[i].bills) }
         Self.assignSequences(in: &local)
@@ -154,6 +174,8 @@ final class SessionManager: ObservableObject {
         manifest.local = local
         // 把更新后的 bill 写回 manifest（inout 已变，但 bills 是 var 局部；这里重置 manifest.bills）
         manifest.bills = trips.flatMap { $0.bills } + local
+        // 重新统计复核数（enrich 可能把 needsReview 翻成 true，ingest 时的计数会漏）
+        manifest.needsReviewCount = manifest.bills.filter { $0.needsReview }.count
 
         save()
     }
@@ -174,7 +196,7 @@ final class SessionManager: ObservableObject {
             if b.billType == .hotelFolio { folioIdxs.append(i) }
             // 任何 vat/hotel 发票都可能配对
             switch b.billType {
-            case .vatInvoiceGeneral, .vatInvoiceSpecial, .hotelInvoice:
+            case .hotelInvoice:
                 invoiceIdxs.append(i)
             default:
                 break
@@ -189,7 +211,8 @@ final class SessionManager: ObservableObject {
             guard inv.amount > 0 else { continue }
             for fIdx in folioIdxs where !usedFolios.contains(fIdx) {
                 guard bills[fIdx].amount > 0 else { continue }
-                if abs(inv.amount - bills[fIdx].amount) < 0.01 {
+                if abs(inv.amount - bills[fIdx].amount) < 0.01,
+                   Self.hotelNameCompatible(inv, bills[fIdx]) {
                     enrich(invoice: &inv, folio: &bills[fIdx])
                     bills[iIdx] = inv  // 写回
                     usedFolios.insert(fIdx)
@@ -197,6 +220,22 @@ final class SessionManager: ObservableObject {
                 }
             }
         }
+    }
+
+    /// 金额相等后，再用酒店名/销方名做一层相关性校验，避免「餐饮发票恰好同金额」被误配成酒店
+    private static func hotelNameCompatible(_ invoice: BillInfo, _ folio: BillInfo) -> Bool {
+        let fName = (folio.fields["hotel_name"]?.flatMap { $0 } ?? "")
+            .trimmingCharacters(in: .whitespaces).lowercased()
+        let iName = (invoice.fields["seller_name"]?.flatMap { $0 }
+                     ?? invoice.fields["hotel_name"]?.flatMap { $0 }
+                     ?? "")
+            .trimmingCharacters(in: .whitespaces).lowercased()
+        // 任一方没有名称可比较 → 只能按金额，放行
+        if fName.isEmpty || iName.isEmpty { return true }
+        // 包含关系最可靠（"亚朵酒店" vs "上海亚朵酒店管理有限公司"）
+        if fName.contains(iName) || iName.contains(fName) { return true }
+        // 字符级相似度兜底
+        return simpleSimilarity(fName, iName) > 0.2
     }
 
     /// 发票缺失字段用水单回填（不覆盖已有值）+ 日期偏移检测
@@ -215,17 +254,16 @@ final class SessionManager: ObservableObject {
         }
         // 1b) folio 的 date_range 用 invoice 的 issue_date 修正（hotel folio LLM 经常把 issue 当 check_in）
         let issueDate = invoice.fields["issue_date"]?.flatMap({ $0 })
-        if let issueDate = issueDate, issueDate.count >= 10,
-           TripResolver.mmddFromDateString(folio.dateRange.start).count == 4 {
-            let folioFirst = TripResolver.mmddFromDateString(folio.dateRange.start)
-            let issueMMDD = TripResolver.mmddFromDateString(issueDate)
+        if let issueDate = issueDate, issueDate.count >= 10 {
             // folio 的 check_out_date 缺失/不可信 → 用 invoice 的 issue_date
             if folio.dateRange.end.isEmpty || folio.dateRange.end == folio.dateRange.start {
-                // folio 单日 → 推断为 check_in + nights
+                // folio 单日 → 用 issue_date 的真实年份反推 check_in（避免硬编码年份的跨年错误）
                 if let nights = fi["nights"]?.flatMap({ Int($0) }), nights > 0,
-                   let checkInMMDD = shiftMMDDBackward(issueMMDD, days: nights - 1) {
-                    folio.dateRange.start = mmddToDateString(checkInMMDD)
-                    folio.dateRange.end = mmddToDateString(issueMMDD)
+                   let issueFull = Self.parseYMD(issueDate),
+                   let checkInFull = Calendar.current.date(byAdding: .day, value: -(nights - 1), to: issueFull) {
+                    let f = Self.ymdFormatter
+                    folio.dateRange.start = f.string(from: checkInFull)
+                    folio.dateRange.end = issueDate
                     folio.fields["check_in_date"] = folio.dateRange.start
                     folio.fields["check_out_date"] = folio.dateRange.end
                 } else {
@@ -331,6 +369,13 @@ final class SessionManager: ObservableObject {
         return f.date(from: String(s.prefix(10)))
     }
 
+    private static let ymdFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+
     private static func dayDiff(_ a: Date, _ b: Date) -> Int {
         let cal = Calendar(identifier: .gregorian)
         return cal.dateComponents([.day], from: a, to: b).day ?? 0
@@ -338,30 +383,42 @@ final class SessionManager: ObservableObject {
 
     // MARK: - didi 字母分配 + toll 序号
 
-    private static func assignSequences(in container: inout [BillInfo]) {
+    /// A → B → ... → Z → AA → AB ...（超过 26 段不再产生非法字符）
+    private static func incrementLetter(_ s: String) -> String {
+        var chars = Array(s)
+        var i = chars.count - 1
+        while i >= 0 {
+            if chars[i] == "Z" {
+                chars[i] = "A"
+                i -= 1
+            } else {
+                let v = chars[i].unicodeScalars.first!.value
+                chars[i] = Character(UnicodeScalar(v + 1)!)
+                return String(chars)
+            }
+        }
+        return "A" + String(chars)
+    }
+
+    static func assignSequences(in container: inout [BillInfo]) {
         var usedLetters = Set<String>()
         var nextLetter = "A"
         func nextAvailableLetter() -> String {
-            while usedLetters.contains(nextLetter) {
-                let scalar = nextLetter.unicodeScalars.first!.value
-                nextLetter = String(UnicodeScalar(scalar + 1)!)
+            var candidate = nextLetter
+            while usedLetters.contains(candidate) {
+                candidate = Self.incrementLetter(candidate)
             }
-            let r = nextLetter
-            usedLetters.insert(r)
-            let scalar = nextLetter.unicodeScalars.first!.value
-            nextLetter = String(UnicodeScalar(scalar + 1)!)
-            return r
+            usedLetters.insert(candidate)
+            nextLetter = Self.incrementLetter(candidate)
+            return candidate
         }
 
-        // 1) didi_trip：按原始顺序（A/B/C...）
-        for i in 0..<container.count where container[i].billType == .didiTrip {
-            if !container[i].didiLetter.isEmpty && usedLetters.contains(container[i].didiLetter) {
-                container[i].didiLetter = nextAvailableLetter()
-            } else if !container[i].didiLetter.isEmpty {
-                usedLetters.insert(container[i].didiLetter)
-            } else {
-                container[i].didiLetter = nextAvailableLetter()
-            }
+        // 1) didi_trip：按行程时间升序分配 A/B/C（行程内自然顺序，而非上传顺序）
+        let tripIndices = container.indices.filter { container[$0].billType == .didiTrip }
+        for i in tripIndices.sorted(by: {
+            Self.didiSortKey(container[$0]) < Self.didiSortKey(container[$1])
+        }) {
+            container[i].didiLetter = nextAvailableLetter()
         }
 
         // 2) didi_invoice：按金额匹配已有 didi_trip
@@ -386,6 +443,40 @@ final class SessionManager: ObservableObject {
         for i in 0..<container.count where container[i].billType == .tollInvoice {
             container[i].didiLetter = String(format: "%02d", tollSeq)
             tollSeq += 1
+        }
+    }
+
+    /// didi_trip 排序键：优先 trip_period（含起止时间），退化为 departure_date；空值排最后
+    private static func didiSortKey(_ b: BillInfo) -> String {
+        if let p = b.fields["trip_period"]?.flatMap({ $0 }), !p.isEmpty {
+            return p
+        }
+        if let d = b.fields["departure_date"]?.flatMap({ $0 }), !d.isEmpty {
+            return d
+        }
+        return "9999"
+    }
+
+    /// 滴滴发票 ↔ 行程单 按金额配对，并让发票继承行程单的日期/城市，
+    /// 确保二者在 TripResolver 里归到同一行程。
+    /// 背景：滴滴常统一批量开票，所有发票 issue_date 都集中在最后一天，
+    /// 若不按金额对齐，发票会全被日期挂到最后一个行程。
+    static func linkDidiInvoices(bills: inout [BillInfo]) {
+        let tripIndices = bills.indices.filter { bills[$0].billType == .didiTrip }
+        var used = Set<Int>()
+        for i in bills.indices where bills[i].billType == .didiInvoice && bills[i].amount > 0 {
+            for j in tripIndices where !used.contains(j) {
+                guard bills[j].amount > 0 else { continue }
+                if abs(bills[j].amount - bills[i].amount) < 0.01 {
+                    bills[i].dateMMDDs = bills[j].dateMMDDs
+                    bills[i].dateRange = bills[j].dateRange
+                    bills[i].cities = bills[j].cities
+                    bills[i].fromCity = bills[j].fromCity
+                    bills[i].toCity = bills[j].toCity
+                    used.insert(j)
+                    break
+                }
+            }
         }
     }
 
@@ -441,7 +532,6 @@ final class SessionManager: ObservableObject {
 
         let fmtAmount = Self.fmtAmount(bill.amount)
         let route = (bill.fromCity.isEmpty || bill.toCity.isEmpty) ? "" : "\(bill.fromCity)-\(bill.toCity)"
-        let issueDate = f["issue_date"].flatMap { $0 } ?? ""
 
         switch bt {
         case .trainTicket:
@@ -523,27 +613,6 @@ final class SessionManager: ObservableObject {
             return parts.isEmpty ? "通信\(suf)" : parts.joined(separator: " ") + suf
             // 注：通信发票字段固定，单独一段可以保持空格；如要 token 合并改成 [dateMmdd, "通信发票\(fmtAmount)"].joined(...)
 
-        case .vatInvoiceGeneral, .vatInvoiceSpecial:
-            // 酒店开的 VAT 专票：只要有 check_in_date 或 hotel_name 字段就按 hotel 命名
-            let hotelName = f["hotel_name"].flatMap { $0 } ?? ""
-            let checkIn = f["check_in_date"].flatMap { $0 } ?? ""
-            if !hotelName.isEmpty || !checkIn.isEmpty {
-                return Self.buildHotelInvoiceFilename(bill: bill, f: f, dateMmdd: dateMmdd)
-            }
-            // 普通 VAT：YYYY-MM-DD 城市销方 金额.pdf
-            let city = (f["city"].flatMap { $0 } ?? bill.cities.first ?? "")
-            let issueYmd = !issueDate.isEmpty && issueDate.count >= 10
-                ? String(issueDate.prefix(10))
-                : dateMmdd
-            // 城市 + 销方简写合成一个 token（中间不空格）
-            // 兜底顺序：seller_name > hotel_name（hotel invoice 经常 LLM 把它填成 hotel_name）
-            let sellerName = f["seller_name"].flatMap { $0 } ?? f["hotel_name"].flatMap { $0 } ?? ""
-            let citySeller = [city, Self.shortSeller(sellerName)]
-                .filter { !$0.isEmpty }
-                .joined(separator: "")
-            let parts = [issueYmd, citySeller, fmtAmount].filter { !$0.isEmpty }
-            return parts.isEmpty ? "发票\(suf)" : parts.joined(separator: " ") + suf
-
         case .other:
             let parts = [dateMmdd, fmtAmount].filter { !$0.isEmpty }
             if !parts.isEmpty { return parts.joined(separator: " ") + suf }
@@ -600,29 +669,6 @@ final class SessionManager: ObservableObject {
         return String(s.dropFirst(5).prefix(2)) + String(s.dropFirst(8).prefix(2))
     }
 
-    /// 复用 hotel 发票命名逻辑（VAT 专票但实际是酒店开的）
-    private static func buildHotelInvoiceFilename(bill: BillInfo, f: [String: String?], dateMmdd: String) -> String {
-        let s = bill.dateRange.start
-        let e = bill.dateRange.end
-        var city = f["city"].flatMap { $0 } ?? ""
-        if city.isEmpty, let c0 = bill.cities.first { city = c0 }
-        if city.isEmpty {
-            let seller = f["seller_name"].flatMap { $0 } ?? f["hotel_name"].flatMap { $0 } ?? ""
-            city = Self.extractHotelCity(from: seller) ?? String(seller.prefix(4))
-        }
-        if city.isEmpty { city = "未知" }
-
-        let dateSeg: String
-        if !s.isEmpty && !e.isEmpty && s != e {
-            dateSeg = "\(Self.mmdd(s))-\(Self.mmdd(e))"
-        } else {
-            dateSeg = !s.isEmpty ? Self.mmdd(s) : dateMmdd
-        }
-        if dateSeg.isEmpty {
-            return "\(city)住宿发票.pdf"
-        }
-        return "\(dateSeg) \(city)住宿发票.pdf"
-    }
 }
 
 // MARK: - Session 创建工具
@@ -645,23 +691,6 @@ extension SessionManager {
             .map { String($0).trimmingCharacters(in: .whitespaces).lowercased() }
             .filter { !$0.isEmpty })
         return set.contains(city.trimmingCharacters(in: .whitespaces).lowercased())
-    }
-
-    /// MMDD → "MM-DD"
-    private static func mmddToDateString(_ mmdd: String) -> String {
-        guard mmdd.count == 4 else { return "" }
-        return "2026-\(mmdd.prefix(2))-\(mmdd.suffix(2))"  // 默认 2026（同 absDateDiff 假设）
-    }
-
-    /// MMDD 向前推 N 天（用于 hotel check_in 推断）
-    private static func shiftMMDDBackward(_ mmdd: String, days: Int) -> String? {
-        guard mmdd.count == 4,
-              let m = Int(mmdd.prefix(2)), let d = Int(mmdd.suffix(2)) else { return nil }
-        var date = Calendar.current.date(from: DateComponents(year: 2026, month: m, day: d)) ?? Date()
-        date = Calendar.current.date(byAdding: .day, value: -days, to: date) ?? date
-        let comps = Calendar.current.dateComponents([.month, .day], from: date)
-        guard let mo = comps.month, let dy = comps.day else { return nil }
-        return String(format: "%02d%02d", mo, dy)
     }
 
     /// 两个 YYYY-MM-DD 之间的天数差

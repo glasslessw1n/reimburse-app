@@ -70,7 +70,8 @@ enum ZipPackager {
             if includeExcel {
                 let xlsxURL = stagingFolder.appendingPathComponent("报销明细.xlsx")
                 do {
-                    try ExcelBuilder.build(bills: session.manifest.bills, outputURL: xlsxURL)
+                    let homeCities = TripResolver.parseHomeCities(ProcessInfo.processInfo.environment["EXCLUDE_CITIES"] ?? "")
+                    try ExcelBuilder.build(bills: session.manifest.bills, homeCities: homeCities, outputURL: xlsxURL)
                 } catch {
                     FileHandle.standardError.write(Data("[ZipPackager] Excel 生成失败: \(error.localizedDescription)\n".utf8))
                 }
