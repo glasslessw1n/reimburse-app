@@ -23,8 +23,6 @@ struct StatusBadges: View {
                 state.showSettings = true
             }
         }
-        .padding(8)   // 外层四周留白一致
-        .background(Capsule().fill(Color.gray.opacity(0.05)))
     }
 }
 
