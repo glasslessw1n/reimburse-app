@@ -31,24 +31,24 @@ struct HomeView: View {
                         (
                             Text("把")
                                 .font(.system(size: 56, weight: .bold))
-                                .foregroundColor(.primary)
+                                .foregroundStyle(.primary)
                             +
                             Text("发票")
                                 .font(.system(size: 56, weight: .bold))
-                                .foregroundColor(.brandOrange)
+                                .foregroundStyle(.brandOrange)
                             +
                             Text("变成")
                                 .font(.system(size: 56, weight: .bold))
-                                .foregroundColor(.primary)
+                                .foregroundStyle(.primary)
                             +
                             Text("\n结构化数据")
                                 .font(.system(size: 56, weight: .bold))
-                                .foregroundColor(.brandOrange)
+                                .foregroundStyle(.brandOrange)
                         )
 
                         Text("上传票据，LLM 自动识别票据类型、抽取关键字段、关联水单发票、按行程归档。一键生成报销明细。")
                             .font(.system(size: 15))
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                             .frame(maxWidth: 460, alignment: .leading)
                             .padding(.top, 12)
                     }
@@ -57,14 +57,14 @@ struct HomeView: View {
                     if !state.llmConfigured {
                         HStack(spacing: 12) {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
+                                .foregroundStyle(.orange)
                                 .font(.system(size: 16))
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("尚未配置 LLM")
                                     .font(.system(size: 13, weight: .semibold))
                                 Text("配置后才能自动识别票据类型和字段")
                                     .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(.secondary)
                             }
                             Spacer()
                             Button("去配置") {
@@ -89,19 +89,15 @@ struct HomeView: View {
                         state.startNewSession()
                     } label: {
                         Text("开始整理 →")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 32)
-                            .padding(.vertical, 14)
-                            .background(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(Color.brandOrange)
-                            )
+                            .font(.system(size: 15, weight: .semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
                     }
-                    .buttonStyle(.plain)
-                    .shadow(color: Color.brandOrange.opacity(0.35), radius: 10, y: 3)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .tint(.brandOrange)
+                    .keyboardShortcut(.defaultAction)
                     .padding(.top, 8)
-                    .hoverScale(1.05)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -136,7 +132,7 @@ private struct RecentSessionsSection: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("最近会话")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
             ForEach(sessions.prefix(5)) { s in
                 SessionRow(summary: s) { onResume(s.sid) }
             }
@@ -155,19 +151,19 @@ private struct SessionRow: View {
             HStack(spacing: 10) {
                 Image(systemName: "clock.arrow.circlepath")
                     .font(.system(size: 13))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("\(summary.billCount) 张票据 · \(summary.tripCount) 个行程")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                     Text(summary.createdLabel)
                         .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -193,7 +189,7 @@ private struct HowToCard: View {
                         .frame(width: 22, height: 22)
                     Text("i")
                         .font(.system(size: 13, weight: .bold, design: .serif))
-                        .foregroundColor(.white)
+                        .foregroundStyle(.white)
                 }
                 Text("操作指引")
                     .font(.system(size: 15, weight: .semibold))
@@ -230,18 +226,18 @@ private struct HowToRow: View {
                     .frame(width: 22, height: 22)
                 Text(num)
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.brandOrange)
+                    .foregroundStyle(.brandOrange)
             }
             VStack(alignment: .leading, spacing: 2) {
                 // 高亮粗体的"动作短语"
                 if let (head, rest) = splitHeadTail(text) {
                     Text(.init("**\(head)** — \(rest)"))
                         .font(.system(size: 13))
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                 } else {
                     Text(text)
                         .font(.system(size: 13))
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                 }
             }
             .fixedSize(horizontal: false, vertical: true)

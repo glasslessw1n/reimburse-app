@@ -37,7 +37,7 @@ private struct Badge: View {
                 .frame(width: 6, height: 6)
             Text("\(label) \(ok ? "✓" : "—")")
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)

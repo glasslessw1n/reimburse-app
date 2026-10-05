@@ -12,16 +12,23 @@ extension Color {
     static let brandOrange = Color(red: 0.98, green: 0.36, blue: 0.10)
 }
 
+extension ShapeStyle where Self == Color {
+    /// 品牌橙色的 ShapeStyle 版，供 `foregroundStyle(.brandOrange)` / `.tint(.brandOrange)` 等前导点语法解析
+    static var brandOrange: Color { Color.brandOrange }
+}
+
 /// 悬浮缩放动效：鼠标悬停时轻微放大（用于按钮 / 卡片）
+/// 尊重「减弱动态效果」：开启时不缩放、不动画。
 struct HoverScale: ViewModifier {
     var scale: CGFloat
     @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content
-            .scaleEffect(hovering ? scale : 1.0)
+            .scaleEffect(!reduceMotion && hovering ? scale : 1.0)
             .onHover { hovering = $0 }
-            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: hovering)
+            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.7), value: hovering)
     }
 }
 

@@ -109,13 +109,13 @@ struct PackageStep: View {
         VStack(spacing: 16) {
             Image(systemName: "archivebox.fill")
                 .font(.system(size: 48))
-                .foregroundColor(.gray.opacity(0.6))
+                .foregroundStyle(.gray.opacity(0.6))
             Text("准备打包")
                 .font(.system(size: 18, weight: .semibold))
             if let session = state.currentSession {
                 Text("\(session.manifest.trips.count) 个行程 · \(session.manifest.local.count) 项本地 · 共 \(session.manifest.bills.count) 张")
                     .font(.system(size: 13))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             Toggle("生成 报销明细.xlsx", isOn: $includeExcel)
                 .toggleStyle(.checkbox)
@@ -126,7 +126,7 @@ struct PackageStep: View {
         VStack(spacing: 16) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 56))
-                .foregroundColor(.green)
+                .foregroundStyle(.green)
             Text("已保存")
                 .font(.system(size: 22, weight: .semibold))
             if let url = vm.savedURL {
@@ -134,7 +134,7 @@ struct PackageStep: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("保存路径")
                         .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                     HStack(spacing: 8) {
                         Text(url.path)
                             .font(.system(size: 12, design: .monospaced))
@@ -180,12 +180,12 @@ struct PackageStep: View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 48))
-                .foregroundColor(.orange)
+                .foregroundStyle(.orange)
             Text("打包失败")
                 .font(.system(size: 18, weight: .semibold))
             Text(err)
                 .font(.system(size: 12))
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
         }

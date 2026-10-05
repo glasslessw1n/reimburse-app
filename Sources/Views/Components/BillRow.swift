@@ -83,7 +83,7 @@ struct BillRow: View {
                 // 类型徽章
                 Text(bill.billType.displayName)
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundStyle(.white)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(
@@ -96,7 +96,7 @@ struct BillRow: View {
                         .lineLimit(1)
                     Text(subtitle)
                         .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
 
@@ -104,11 +104,11 @@ struct BillRow: View {
 
                 Text(String(format: "¥%.2f", bill.amount))
                     .font(.system(size: 13, weight: .semibold).monospacedDigit())
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.primary)
 
                 Image(systemName: expanded ? "chevron.up" : "chevron.down")
                     .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -148,11 +148,11 @@ struct BillRow: View {
                     HStack(alignment: .top, spacing: 8) {
                         Text(key)
                             .font(.system(size: 11))
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                             .frame(width: 100, alignment: .leading)
                         Text(v)
                             .font(.system(size: 11))
-                            .foregroundColor(.primary)
+                            .foregroundStyle(.primary)
                             .textSelection(.enabled)
                         Spacer()
                     }
@@ -161,11 +161,11 @@ struct BillRow: View {
             if !bill.error.isEmpty {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle")
-                        .foregroundColor(.orange)
+                        .foregroundStyle(.orange)
                         .font(.system(size: 11))
                     Text(bill.error)
                         .font(.system(size: 11))
-                        .foregroundColor(.orange)
+                        .foregroundStyle(.orange)
                 }
             }
         }

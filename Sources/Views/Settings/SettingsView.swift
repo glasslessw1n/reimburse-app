@@ -44,7 +44,7 @@ struct SettingsView: View {
                 Spacer()
                 Button("关闭") { dismiss() }
                     .buttonStyle(.plain)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)
@@ -93,7 +93,7 @@ struct SettingsView: View {
                         } label: {
                             Image(systemName: apiKeyVisible ? "eye.slash" : "eye")
                                 .font(.system(size: 12))
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(.secondary)
                                 .frame(width: 22, height: 22)
                                 .background(
                                     RoundedRectangle(cornerRadius: 5)
@@ -138,12 +138,12 @@ struct SettingsView: View {
                 if !availableModels.isEmpty {
                     Text("已发现 \(availableModels.count) 个模型")
                         .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .padding(.leading, labelWidth + 12)
                 } else if !testResult.isEmpty && testColor == .red {
                     Text("提示：如果「拉取列表」报错，可手动在 Model 框输入模型名")
                         .font(.system(size: 10))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .padding(.leading, labelWidth + 12)
                 }
             }
@@ -179,7 +179,7 @@ struct SettingsView: View {
                 if !testResult.isEmpty {
                     Text(testResult)
                         .font(.system(size: 11))
-                        .foregroundColor(testColor)
+                        .foregroundStyle(testColor)
                         .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -225,7 +225,7 @@ struct SettingsView: View {
         HStack(alignment: .center, spacing: 12) {
             Text(label)
                 .font(.system(size: 12))
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .frame(width: labelWidth, alignment: .leading)
             field()
                 .frame(width: fieldWidth, alignment: .leading)
@@ -237,7 +237,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.system(size: 11))
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
             field()
         }
         .frame(maxWidth: .infinity, alignment: .leading)

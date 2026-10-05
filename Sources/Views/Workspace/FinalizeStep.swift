@@ -19,7 +19,7 @@ struct FinalizeStep: View {
                 if let session = state.currentSession {
                     Text("\(session.manifest.trips.count) 个行程 · \(session.manifest.local.count) 项本地")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button("补传") {
@@ -137,11 +137,11 @@ private struct TripCard: View {
                     if !cityLabel.isEmpty {
                         Text(cityLabel)
                             .font(.system(size: 13))
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     } else {
                         Text("未识别城市")
                             .font(.system(size: 13))
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 Spacer()
@@ -149,23 +149,23 @@ private struct TripCard: View {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text("¥")
                             .font(.system(size: 12))
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                         AnimatedNumber(value: totalAmount)
                             .font(.system(size: 22, weight: .semibold))
-                            .foregroundColor(.primary)
+                            .foregroundStyle(.primary)
                     }
                     Text("\(trip.bills.count) 张")
                         .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                     if missingInvoiceCount > 0 {
                         Label("\(missingInvoiceCount) 段缺发票", systemImage: "exclamationmark.triangle")
                             .font(.system(size: 10))
-                            .foregroundColor(.orange)
+                            .foregroundStyle(.orange)
                     }
                 }
                 Image(systemName: expanded ? "chevron.up" : "chevron.down")
                     .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .padding(.leading, 8)
             }
             .padding(.horizontal, 16)
@@ -210,24 +210,24 @@ private struct LocalCard: View {
                         .font(.system(size: 18, weight: .semibold))
                     Text("无法归入行程的本地票据")
                         .font(.system(size: 13))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 0) {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text("¥")
                             .font(.system(size: 12))
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                         AnimatedNumber(value: totalAmount)
                             .font(.system(size: 22, weight: .semibold))
                     }
                     Text("\(bills.count) 张")
                         .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
                 Image(systemName: expanded ? "chevron.up" : "chevron.down")
                     .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .padding(.leading, 8)
             }
             .padding(.horizontal, 16)

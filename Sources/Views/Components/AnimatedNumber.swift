@@ -13,19 +13,29 @@ struct AnimatedNumber: View {
     var format: String = "%.2f"
 
     @State private var displayed: Double = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Text(String(format: format, displayed))
             .monospacedDigit()
             .onAppear {
-                displayed = 0
-                withAnimation(.spring(duration: 0.8, bounce: 0.15)) {
+                // 尊重「减弱动态效果」：直接跳到目标值，不做滚动动画
+                if reduceMotion {
                     displayed = value
+                } else {
+                    displayed = 0
+                    withAnimation(.spring(duration: 0.8, bounce: 0.15)) {
+                        displayed = value
+                    }
                 }
             }
             .onChange(of: value) { _, newValue in
-                withAnimation(.spring(duration: 0.4)) {
+                if reduceMotion {
                     displayed = newValue
+                } else {
+                    withAnimation(.spring(duration: 0.4)) {
+                        displayed = newValue
+                    }
                 }
             }
     }

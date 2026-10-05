@@ -23,7 +23,7 @@ struct WorkspaceView: View {
                         .font(.system(size: 12))
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
 
                 Spacer()
 
@@ -98,17 +98,17 @@ private struct StepIndicator: View {
                             if isReached(step) {
                                 Image(systemName: "checkmark")
                                     .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.brandOrange)
+                                    .foregroundStyle(.brandOrange)
                             } else {
                                 Text("\(i + 1)")
                                     .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(isCurrent(step) ? .white : .secondary)
+                                    .foregroundStyle(isCurrent(step) ? .white : .secondary)
                             }
                         }
                         .scaleEffect(isCurrent(step) ? 1.12 : 1.0)
                         Text(step.title)
                             .font(.system(size: 12, weight: isCurrent(step) ? .semibold : .regular))
-                            .foregroundColor(textColor(step))
+                            .foregroundStyle(textColor(step))
                     }
                 }
                 .buttonStyle(.plain)

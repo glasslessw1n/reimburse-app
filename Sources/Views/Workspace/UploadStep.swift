@@ -185,7 +185,7 @@ struct UploadStep: View {
                         .font(.system(size: 13, weight: .semibold))
                     Text("(\(session.manifest.bills.count))")
                         .font(.system(size: 13))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                     Spacer()
                     if session.manifest.needsReviewCount > 0 {
                         ReviewBadge(count: session.manifest.needsReviewCount)
@@ -302,17 +302,17 @@ struct UploadStep: View {
                     .controlSize(.small)
                 Text(vm.stage)
                     .font(.system(size: 12))
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.primary)
                 Spacer()
                 Text("\(vm.done) / \(vm.total)")
                     .font(.system(size: 12).monospacedDigit())
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             ProgressBar(value: progress, label: "")
             if !vm.current.isEmpty {
                 Text(vm.current)
                     .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }

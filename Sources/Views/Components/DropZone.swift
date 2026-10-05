@@ -19,7 +19,7 @@ struct DropZone: View {
                 .strokeBorder(
                     style: StrokeStyle(lineWidth: 2, dash: [8, 6])
                 )
-                .foregroundColor(isTargeted
+                .foregroundStyle(isTargeted
                     ? .brandOrange
                     : Color.gray.opacity(0.3))
                 .background(
@@ -32,13 +32,13 @@ struct DropZone: View {
             VStack(spacing: 12) {
                 Image(systemName: "tray.and.arrow.down")
                     .font(.system(size: 36))
-                    .foregroundColor(.gray.opacity(0.6))
+                    .foregroundStyle(.gray.opacity(0.6))
                 Text("把发票、单据拖进来")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.primary)
                 Text("支持 PDF / JPG / PNG · 一次可拖多张")
                     .font(.system(size: 12))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
         }
         .frame(height: 180)
