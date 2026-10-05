@@ -29,7 +29,7 @@ struct ContentView: View {
         .sheet(isPresented: $state.showSettings) {
             SettingsView()
                 .environment(state)
-                .presentationBackground(.clear)
+                .presentationBackground(.ultraThinMaterial)
         }
     }
 

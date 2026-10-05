@@ -213,7 +213,6 @@ struct SettingsView: View {
             .padding(.vertical, 14)
         }
         .frame(width: 560)
-        .modifier(SettingsSheetBackground())
         .onAppear { loadFromStore() }
     }
 
@@ -308,11 +307,11 @@ struct SettingsView: View {
                 system: "你是一个测试助手。请用 JSON 输出。",
                 user: "请输出 {\"ok\": true}"
             )
-            testResult = "✅ 连接成功。响应：\(String(describing: resp).prefix(80))"
+            testResult = "✓ 连接成功。响应：\(String(describing: resp).prefix(80))"
             testColor = .green
             state.llmAvailable = true
         } catch {
-            testResult = "❌ \(error.localizedDescription)"
+            testResult = "✕ \(error.localizedDescription)"
             testColor = .red
             state.llmAvailable = false
         }
@@ -330,24 +329,11 @@ struct SettingsView: View {
         do {
             let models = try await LLMClient(config: cfg).listModels()
             availableModels = models
-            testResult = "✅ 拉到 \(models.count) 个模型"
+            testResult = "✓ 拉到 \(models.count) 个模型"
             testColor = .green
         } catch {
-            testResult = "❌ 拉模型失败：\(error.localizedDescription)"
+            testResult = "✕ 拉模型失败：\(error.localizedDescription)"
             testColor = .red
-        }
-    }
-}
-
-/// 设置弹窗背景：macOS 26 直接给内容加 Liquid Glass，旧版降级到 HUD 窗口材质
-private struct SettingsSheetBackground: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(macOS 26, *) {
-            content.glassEffect(.regular, in: .rect(cornerRadius: 12))
-        } else {
-            content.background {
-                VisualEffectView(material: .hudWindow, blendingMode: .behindWindow, alpha: 1.0)
-            }
         }
     }
 }
