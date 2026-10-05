@@ -165,9 +165,9 @@ struct SettingsView: View {
                             .textFieldStyle(.roundedBorder)
                     }
                 }
-                fieldRow("常驻地") {
-                    TextField("北京, 上海", text: $excludeCitiesText)
-                        .textFieldStyle(.roundedBorder)
+                    compactField("常驻地") {
+                        TextField("北京, 上海", text: $excludeCitiesText)
+                            .textFieldStyle(.roundedBorder)
                 }
             }
             .padding(.horizontal, 20)
@@ -339,11 +339,11 @@ struct SettingsView: View {
     }
 }
 
-/// 设置弹窗背景：macOS 26 让系统自动应用 Liquid Glass，旧版降级到 HUD 窗口材质
+/// 设置弹窗背景：macOS 26 直接给内容加 Liquid Glass，旧版降级到 HUD 窗口材质
 private struct SettingsSheetBackground: ViewModifier {
     func body(content: Content) -> some View {
         if #available(macOS 26, *) {
-            content
+            content.glassEffect(.regular, in: .rect(cornerRadius: 12))
         } else {
             content.background {
                 VisualEffectView(material: .hudWindow, blendingMode: .behindWindow, alpha: 1.0)
