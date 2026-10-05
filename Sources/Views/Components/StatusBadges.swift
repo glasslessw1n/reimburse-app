@@ -23,6 +23,8 @@ struct StatusBadges: View {
                 state.showSettings = true
             }
         }
+        .padding(8)   // 外层四周留白一致
+        .background(Capsule().fill(Color.gray.opacity(0.05)))
     }
 }
 
@@ -42,7 +44,7 @@ private struct StatusIcon: View {
                 .frame(width: 6, height: 6)
         }
         .padding(8)   // 四周留白一致
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.08)))
+        .background(Capsule().fill(Color.gray.opacity(0.08)))
         .help("\(label)：\(ok ? "可用" : "未就绪")")
     }
 }
