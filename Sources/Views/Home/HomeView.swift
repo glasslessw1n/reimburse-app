@@ -13,6 +13,14 @@ struct HomeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // 顶部状态区（靠右）
+            HStack {
+                Spacer()
+                StatusBadges()
+            }
+            .padding(.horizontal, 32)
+            .padding(.top, 16)
+
             Spacer()
 
             // Hero 区（左右两栏）
@@ -109,11 +117,6 @@ struct HomeView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { state.refreshSessions() }
-        .toolbar {
-            ToolbarItem(placement: .status) {
-                StatusBadges()
-            }
-        }
     }
 }
 

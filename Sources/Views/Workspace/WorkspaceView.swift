@@ -15,35 +15,42 @@ struct WorkspaceView: View {
 
     var body: some View {
         @Bindable var state = state
-        Group {
-            switch state.workspaceStep {
-            case .upload:
-                UploadStep()
-            case .finalize:
-                FinalizeStep()
-            case .package:
-                PackageStep()
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
+        VStack(spacing: 0) {
+            // 自定义 topbar（现代：返回 + segmented + 状态图标，避免 toolbar 的 Liquid Glass 背景）
+            HStack(spacing: 16) {
                 Button {
                     state.clearCurrentSession()
                     state.page = .home
                 } label: {
                     Label("返回首页", systemImage: "chevron.left")
                 }
+                .buttonStyle(.borderless)
                 .help("返回首页")
-            }
 
-            ToolbarItem(placement: .principal) {
+                Spacer()
+
                 StepPicker(selection: $state.workspaceStep)
-            }
 
-            ToolbarItem(placement: .status) {
+                Spacer()
+
                 StatusBadges()
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
+
+            Divider()
+
+            Group {
+                switch state.workspaceStep {
+                case .upload:
+                    UploadStep()
+                case .finalize:
+                    FinalizeStep()
+                case .package:
+                    PackageStep()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
