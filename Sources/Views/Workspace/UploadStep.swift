@@ -243,12 +243,10 @@ struct UploadStep: View {
 
                 Spacer()
 
-                Button {
+                Button("下一步：整理 →") {
                     // 触发行程归类（按日期+城市连通性合并）；常驻地从设置显式传入
                     state.currentSession?.finalize(homeCities: state.settingsStore.settings.homeCities)
                     state.advance(to: .finalize)
-                } label: {
-                    Text("下一步：整理 →")
                 }
                 .primaryAction()
                 .disabled(state.currentSession?.manifest.bills.isEmpty ?? true || vm.processing)
