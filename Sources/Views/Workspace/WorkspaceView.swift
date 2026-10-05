@@ -41,7 +41,7 @@ struct WorkspaceView: View {
                 StepPicker(selection: $state.workspaceStep)
             }
 
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItem(placement: .status) {
                 StatusBadges()
             }
         }

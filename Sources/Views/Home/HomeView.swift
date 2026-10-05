@@ -110,7 +110,7 @@ struct HomeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { state.refreshSessions() }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItem(placement: .status) {
                 StatusBadges()
             }
         }
