@@ -216,10 +216,10 @@ private struct HowToCard: View {
             .padding(.bottom, 4)
 
             VStack(alignment: .leading, spacing: 10) {
-                HowToRow(num: "1", text: "配 LLM — 点顶部LLM图标，选 Provider（DeepSeek / OpenAI / Ollama / 自定义 等），填 API Key，「拉取模型」选好后保存。")
-                HowToRow(num: "2", text: "点「开始整理」拖文件 — 把 PDF / 图片拖到上传框，一次可多张，自动 OCR + LLM 识别，拖放区下方实时显示结果。")
-                HowToRow(num: "3", text: "整理归类 — 点「下一步：整理」，按日期 + 城市连通性自动合并差旅行程。")
-                HowToRow(num: "4", text: "保存到下载目录 — 点「保存到下载目录」一键落盘 ZIP，路径可直接复制或在 Finder 中打开。")
+                HowToRow(num: "1", head: "配置", tail: "点右上角齿轮图标，选 Provider（DeepSeek / OpenAI / Ollama 等），填 API Key，测试连接后保存。")
+                HowToRow(num: "2", head: "开始整理", tail: "点「开始整理」新建会话，或从下方「最近会话」继续上次未完成的。")
+                HowToRow(num: "3", head: "上传识别", tail: "把 PDF / 图片拖入上传框，自动 OCR + LLM 识别；识别有误可右键单票「重新识别」或「删除」。")
+                HowToRow(num: "4", head: "整理打包", tail: "点「下一步：整理」自动合并行程，检查后「保存到下载目录」生成 ZIP + 报销明细。")
             }
         }
         .padding(20)
@@ -235,7 +235,8 @@ private struct HowToCard: View {
 
 private struct HowToRow: View {
     let num: String
-    let text: String
+    let head: String
+    let tail: String
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -248,35 +249,13 @@ private struct HowToRow: View {
                     .foregroundStyle(.brandOrange)
             }
             VStack(alignment: .leading, spacing: 2) {
-                // 高亮粗体的"动作短语"
-                if let (head, rest) = splitHeadTail(text) {
-                    Text(.init("**\(head)** — \(rest)"))
-                        .font(.system(size: 13))
-                        .foregroundStyle(.primary)
-                } else {
-                    Text(text)
-                        .font(.system(size: 13))
-                        .foregroundStyle(.primary)
-                }
+                // 动作短语加粗 + 说明
+                Text(.init("**\(head)** — \(tail)"))
+                    .font(.system(size: 13))
+                    .foregroundStyle(.primary)
             }
             .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    /// 拆 "** 拖文件 ** — ..." 为 ("拖文件", "...")
-    private func splitHeadTail(_ s: String) -> (String, String)? {
-        guard let r = s.range(of: "**") else { return nil }
-        let head = String(s[r.upperBound...])
-        // 跳到下一个 ** 后的 —
-        guard let endRange = head.range(of: "**") else { return nil }
-        let bold = String(head[..<endRange.lowerBound])
-        var tail = String(head[endRange.upperBound...]).trimmingCharacters(in: .whitespaces)
-        if tail.hasPrefix("—") {
-            tail = String(tail.dropFirst()).trimmingCharacters(in: .whitespaces)
-        } else if tail.hasPrefix("-") {
-            tail = String(tail.dropFirst()).trimmingCharacters(in: .whitespaces)
-        }
-        return (bold, tail)
     }
 }
 

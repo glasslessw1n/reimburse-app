@@ -41,9 +41,8 @@ private struct StatusIcon: View {
                 .fill(ok ? Color.green : Color.gray.opacity(0.4))
                 .frame(width: 6, height: 6)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(Capsule().fill(Color.gray.opacity(0.08)))
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 7).fill(Color.gray.opacity(0.08)))
         .help("\(label)：\(ok ? "可用" : "未就绪")")
     }
 }
@@ -61,10 +60,13 @@ private struct SettingsGearButton: View {
                 .foregroundStyle(.secondary)
                 .rotationEffect(.degrees(!reduceMotion && hovering ? 60 : 0))
                 .scaleEffect(!reduceMotion && hovering ? 1.18 : 1.0)
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 7).fill(Color.gray.opacity(0.08)))
+                .contentShape(RoundedRectangle(cornerRadius: 7))
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: hovering)
-        .help("LLM 设置")
+        .help("设置")
     }
 }
