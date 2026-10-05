@@ -27,7 +27,7 @@ struct HoverLift: ViewModifier {
         content
             .scaleEffect(!reduceMotion && hovering ? scale : 1.0)
             .offset(y: !reduceMotion && hovering ? -1.5 : 0)
-            .shadow(color: Color.brandOrange.opacity(!reduceMotion && hovering ? 0.45 : 0), radius: 8, y: 3)
+            .shadow(color: Color.brandOrange.opacity(!reduceMotion && hovering ? 0.45 : 0), radius: 18, y: 6)
             .onHover { hovering = $0 }
             .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: hovering)
     }
