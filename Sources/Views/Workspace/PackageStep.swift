@@ -76,11 +76,10 @@ struct PackageStep: View {
                     Button {
                         Task { await vm.package(session: state.currentSession!, includeExcel: includeExcel, homeCities: state.settingsStore.settings.homeCities) }
                     } label: {
-                        HStack {
+                        HStack(spacing: 4) {
                             if vm.packing { ProgressView().scaleEffect(0.5) }
                             Text(vm.packing ? "打包中…" : "保存到下载目录")
                         }
-                        .frame(minWidth: 140)
                     }
                     .primaryAction()
                     .disabled(state.currentSession?.manifest.bills.isEmpty ?? true || vm.packing)
