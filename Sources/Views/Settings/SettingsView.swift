@@ -2,7 +2,7 @@
 //  SettingsView.swift
 //  报销整理Native
 //
-//  LLM 配置面板：
+//  LLM 配置面板（紧凑单屏布局，无滚动条）：
 //  - Provider 下拉（DeepSeek / OpenAI / 月之暗面 / 智谱 / Ollama / vLLM / 自定义）
 //  - 选 Provider 自动填 Base URL + 默认 model
 //  - Base URL / API Key / Model 手填
@@ -30,122 +30,96 @@ struct SettingsView: View {
     @State private var showSavedTip = false
     @State private var manualBaseURL: Bool = false  // 用户改过 baseURL → 不再自动覆盖
 
-    /// 手输框的固定宽度（也用于 Picker 下拉的参考宽度）
-    private let inputFieldWidth: CGFloat = 320
+    /// 标签宽度（行式布局：标签在左、输入框在右）
+    private let labelWidth: CGFloat = 84
+    /// 输入框宽度（所有字段统一此宽度，保证右边缘对齐）
+    private let fieldWidth: CGFloat = 320
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(spacing: 0) {
             // 标题栏
             HStack {
                 Text("LLM 设置")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold))
                 Spacer()
                 Button("关闭") { dismiss() }
                     .buttonStyle(.plain)
                     .foregroundColor(.secondary)
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 16)
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
 
             Divider()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    sectionTitle("Provider")
-
-                    // Provider 下拉：NSPopUpButton 包装（宽度严格 = inputFieldWidth）
-                    HStack {
-                        PopUpButtonWithLabel(
-                            entries: LLMProvider.allCases.map { ($0, $0.rawValue) },
-                            selection: $provider,
-                            width: inputFieldWidth
-                        )
-                        .frame(width: inputFieldWidth, height: 24, alignment: .leading)
-                        .onChange(of: provider) { _, new in
-                            handleProviderChange(new)
-                        }
-                        Spacer()
+            // 连接配置
+            VStack(spacing: 12) {
+                fieldRow("Provider") {
+                    PopUpButtonWithLabel(
+                        entries: LLMProvider.allCases.map { ($0, $0.rawValue) },
+                        selection: $provider,
+                        width: fieldWidth
+                    )
+                    .frame(width: fieldWidth, height: 24, alignment: .leading)
+                    .onChange(of: provider) { _, new in
+                        handleProviderChange(new)
                     }
+                }
 
-                    sectionTitle("服务配置")
-
-                    // Base URL：选了非自定义 provider 时锁定 + 显示对应 url
-                    let baseURLIsLocked = (provider != .custom)
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Text("Base URL")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                            if baseURLIsLocked {
-                                Text("（随 Provider 自动填充）")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(Color.gray.opacity(0.6))
-                            }
+                let baseURLIsLocked = (provider != .custom)
+                fieldRow("Base URL") {
+                    TextField(baseURLIsLocked ? provider.defaultBaseURL : "https://your-provider.com/v1",
+                              text: $baseURL)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(baseURLIsLocked)
+                        .onChange(of: baseURL) { _, _ in
+                            manualBaseURL = true
                         }
-                        TextField(baseURLIsLocked ? provider.defaultBaseURL : "https://your-provider.com/v1",
-                                  text: $baseURL)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: inputFieldWidth)
-                            .disabled(baseURLIsLocked)
-                            .onChange(of: baseURL) { _, _ in
-                                manualBaseURL = true
-                            }
-                    }
+                }
 
-                    // API Key：右侧 eye 切换显示
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("API Key")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        HStack(spacing: 4) {
-                            Group {
-                                if apiKeyVisible {
-                                    TextField("sk-...", text: $apiKey)
-                                } else {
-                                    SecureField("sk-...", text: $apiKey)
-                                }
-                            }
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: inputFieldWidth - 36)  // 留出按钮
-                            Button {
-                                apiKeyVisible.toggle()
-                            } label: {
-                                Image(systemName: apiKeyVisible ? "eye.slash" : "eye")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                                    .frame(width: 24, height: 24)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 5)
-                                            .fill(Color.gray.opacity(0.08))
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                            .help(apiKeyVisible ? "隐藏 API Key" : "显示 API Key")
-                        }
-                    }
-
-                    // Model + 拉取按钮（统一外观的 Picker，宽度 = inputFieldWidth）
-                    HStack(alignment: .bottom, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Model")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                            if availableModels.isEmpty {
-                                TextField(provider.defaultModel, text: $model)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: inputFieldWidth)
+                fieldRow("API Key") {
+                    HStack(spacing: 6) {
+                        Group {
+                            if apiKeyVisible {
+                                TextField("sk-...", text: $apiKey)
                             } else {
-                                // 把当前 model（不在列表里的）也作为第一项保留
-                                let entries = ([(model, model)] +
-                                    availableModels.map { ($0, $0) })
-                                    .filter { !$0.0.isEmpty }
-                                PopUpButtonWithLabel(
-                                    entries: entries,
-                                    selection: $model,
-                                    width: inputFieldWidth
-                                )
-                                .frame(width: inputFieldWidth, height: 24, alignment: .leading)
+                                SecureField("sk-...", text: $apiKey)
                             }
+                        }
+                        .textFieldStyle(.roundedBorder)
+
+                        Button {
+                            apiKeyVisible.toggle()
+                        } label: {
+                            Image(systemName: apiKeyVisible ? "eye.slash" : "eye")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                                .frame(width: 22, height: 22)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .fill(Color.gray.opacity(0.08))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .help(apiKeyVisible ? "隐藏 API Key" : "显示 API Key")
+                    }
+                }
+
+                fieldRow("Model") {
+                    HStack(spacing: 8) {
+                        if availableModels.isEmpty {
+                            TextField(provider.defaultModel, text: $model)
+                                .textFieldStyle(.roundedBorder)
+                        } else {
+                            let entries = ([(model, model)] +
+                                availableModels.map { ($0, $0) })
+                                .filter { !$0.0.isEmpty }
+                            PopUpButtonWithLabel(
+                                entries: entries,
+                                selection: $model,
+                                width: 220
+                            )
+                            .frame(width: 220, height: 24, alignment: .leading)
                         }
                         Button {
                             Task { await fetchModels() }
@@ -157,99 +131,116 @@ struct SettingsView: View {
                             }
                         }
                         .buttonStyle(.bordered)
-                        .hoverScale()
                         .disabled(apiKey.isEmpty || baseURL.isEmpty || isFetchingModels)
                     }
+                }
 
-                    if !availableModels.isEmpty {
-                        Text("已发现 \(availableModels.count) 个模型")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                    } else if !testResult.isEmpty && testColor == .red {
-                        Text("提示：如果「拉取列表」报错，可手动在 Model 框输入模型名")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                    }
+                if !availableModels.isEmpty {
+                    Text("已发现 \(availableModels.count) 个模型")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .padding(.leading, labelWidth + 12)
+                } else if !testResult.isEmpty && testColor == .red {
+                    Text("提示：如果「拉取列表」报错，可手动在 Model 框输入模型名")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .padding(.leading, labelWidth + 12)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
 
-                    Divider().padding(.vertical, 8)
+            Divider()
 
-                    sectionTitle("购方主数据（增值税发票时强制覆盖 buyer 字段）")
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("购方名称")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
+            // 购方主数据 + 常驻地
+            VStack(spacing: 12) {
+                HStack(spacing: 16) {
+                    compactField("购方名称") {
                         TextField("XX 有限公司", text: $buyerName)
                             .textFieldStyle(.roundedBorder)
-                            .frame(width: inputFieldWidth)
                     }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("购方税号")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
+                    compactField("购方税号") {
                         TextField("9111...", text: $buyerTaxNo)
                             .textFieldStyle(.roundedBorder)
-                            .frame(width: inputFieldWidth)
                     }
-
-                    Divider().padding(.vertical, 8)
-
-                    sectionTitle("常驻地（行程分组目录里要去掉的城市，逗号分隔）")
+                }
+                fieldRow("常驻地") {
                     TextField("北京, 上海", text: $excludeCitiesText)
                         .textFieldStyle(.roundedBorder)
-                        .frame(width: inputFieldWidth)
-
-                    Divider().padding(.vertical, 8)
-
-                    if !testResult.isEmpty {
-                        Text(testResult)
-                            .font(.system(size: 12))
-                            .foregroundColor(testColor)
-                    }
-
-                    HStack {
-                        Button {
-                            Task { await testConnection() }
-                        } label: {
-                            HStack {
-                                if isTesting { ProgressView().scaleEffect(0.5) }
-                                Text(isTesting ? "测试中…" : "测试连接")
-                            }
-                            .frame(minWidth: 100)
-                        }
-                        .buttonStyle(.bordered)
-                        .hoverScale()
-                        .disabled(apiKey.isEmpty || baseURL.isEmpty || isTesting)
-
-                        Spacer()
-
-                        Button {
-                            save()
-                        } label: {
-                            Text(showSavedTip ? "✓ 已保存" : "保存")
-                                .frame(minWidth: 80)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.brandOrange)
-                        .hoverScale()
-                    }
-                    .padding(.top, 8)
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 16)
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+
+            Divider()
+
+            // 反馈 + 底部按钮
+            VStack(spacing: 10) {
+                if !testResult.isEmpty {
+                    Text(testResult)
+                        .font(.system(size: 11))
+                        .foregroundColor(testColor)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                HStack {
+                    Button {
+                        Task { await testConnection() }
+                    } label: {
+                        HStack(spacing: 4) {
+                            if isTesting { ProgressView().scaleEffect(0.5) }
+                            Text(isTesting ? "测试中…" : "测试连接")
+                        }
+                        .frame(minWidth: 90)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(apiKey.isEmpty || baseURL.isEmpty || isTesting)
+
+                    Spacer()
+
+                    Button {
+                        save()
+                    } label: {
+                        Text(showSavedTip ? "✓ 已保存" : "保存")
+                            .frame(minWidth: 76)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.brandOrange)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
         }
-        .frame(width: 560, height: 640)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(width: 560)
+        .background {
+            VisualEffectView(material: .hudWindow, blendingMode: .behindWindow, alpha: 1.0)
+        }
         .onAppear { loadFromStore() }
     }
 
-    // MARK: - 子视图
+    // MARK: - 行式布局辅助
 
-    private func sectionTitle(_ s: String) -> some View {
-        Text(s)
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundColor(.secondary)
-            .padding(.bottom, 4)
+    /// 标签在左、输入框在右（主配置区用）：字段统一宽度、左对齐，保证整齐
+    private func fieldRow(_ label: String, @ViewBuilder field: () -> some View) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .frame(width: labelWidth, alignment: .leading)
+            field()
+                .frame(width: fieldWidth, alignment: .leading)
+        }
+    }
+
+    /// 紧凑字段（购方名称/税号并排用，标签在上）：两列强制平分宽度
+    private func compactField(_ label: String, @ViewBuilder field: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            field()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @Environment(\.dismiss) private var dismiss
@@ -270,19 +261,14 @@ struct SettingsView: View {
 
     /// Provider 切换：自动覆盖 base_url 和默认 model（除非用户手改过）
     private func handleProviderChange(_ p: LLMProvider) {
-        // 选非 custom → 强制覆盖 base URL（即使是手改过）
-        // 选 custom → 清空让用户填
         if p == .custom {
             baseURL = ""
-            // 同时清空已拉取的模型列表，让 Model 回到 TextField
             availableModels = []
         } else {
             baseURL = p.defaultBaseURL
             manualBaseURL = false
-            // 切到新 provider 时，原来的模型列表大概率对不上 → 清空
             availableModels = []
         }
-        // model：覆盖为新 provider 的默认值（除非用户手填过别的）
         model = p.defaultModel
     }
 
