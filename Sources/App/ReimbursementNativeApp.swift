@@ -31,6 +31,13 @@ struct ReimbursementNativeApp: App {
                 }
                 .keyboardShortcut("n", modifiers: [.command])
             }
+            CommandGroup(after: .newItem) {
+                Button("补传票据") {
+                    state.advance(to: .upload)
+                }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
+                .disabled(state.currentSession == nil)
+            }
             CommandGroup(replacing: .appSettings) {
                 Button("LLM 设置…") {
                     state.showSettings = true

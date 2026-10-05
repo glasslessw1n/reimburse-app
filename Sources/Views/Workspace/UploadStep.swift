@@ -116,6 +116,23 @@ final class UploadViewModel {
             error: receipt.error
         )
     }
+
+    /// 重新识别单张：读原文件重跑 OCR+LLM，替换同 uid 的旧票据（保留 uid 保持列表身份稳定）
+    func reRecognize(_ bill: BillInfo, session: SessionManager, recognizer: LLMRecognizer) async {
+        let src = session.rootDir.appendingPathComponent("originals").appendingPathComponent(bill.sourceFile)
+        guard let data = try? Data(contentsOf: src) else { return }
+
+        let suffix = (bill.sourceFile as NSString).pathExtension
+        stage = "重新识别 \(bill.sourceFile)"
+        let ocrText = (try? await TextExtractor.extract(data: data, suffix: suffix)) ?? ""
+        let receipt = await recognizer.recognize(
+            ocrText: ocrText, filename: bill.sourceFile, sourceFile: bill.sourceFile
+        )
+
+        var newBill = toBillInfo(receipt: receipt, sourceFile: bill.sourceFile, rawText: ocrText)
+        newBill.uid = bill.uid   // 保留身份，避免列表行跳位
+        session.replaceBill(newBill)
+    }
 }
 
 struct UploadStep: View {
@@ -190,6 +207,16 @@ struct UploadStep: View {
                     LazyVStack(spacing: 6) {
                         ForEach(displayedBills) { bill in
                             BillRow(bill: bill)
+                                .contextMenu {
+                                    Button("重新识别") {
+                                        Task { await reRecognize(bill) }
+                                    }
+                                    .disabled(vm.processing)
+                                    Divider()
+                                    Button("删除", role: .destructive) {
+                                        state.currentSession?.removeBill(uid: bill.uid)
+                                    }
+                                }
                         }
                     }
                     .padding(.horizontal, 24)
@@ -256,6 +283,15 @@ struct UploadStep: View {
         session.save()
         // 强制刷新（SwiftUI 对 array 的同 identity mutation 不一定刷）
         state.currentSession = session
+    }
+
+    /// 重新识别单张票据（右键菜单触发）
+    private func reRecognize(_ bill: BillInfo) async {
+        guard let session = state.currentSession else { return }
+        let recognizer = LLMRecognizer(
+            client: LLMClient(config: state.settingsStore.settings.llmConfig)
+        )
+        await vm.reRecognize(bill, session: session, recognizer: recognizer)
     }
 
     /// 进度面板：spinner + stage + 进度条 + 当前文件名

@@ -45,6 +45,9 @@ final class AppState {
     /// 当前 session
     var currentSession: SessionManager?
 
+    /// 已保存的会话摘要（首页「最近会话」列表）
+    var sessions: [SessionSummary] = []
+
     /// 是否弹出设置面板（供首页引导、状态徽章、⌘, 快捷键共用）
     var showSettings = false
 
@@ -67,6 +70,22 @@ final class AppState {
         currentSession = SessionManager(sid: sid)
         workspaceStep = .upload
         page = .workspace
+    }
+
+    /// 恢复一个已保存的会话；已整理过则直接进「整理」步骤，否则从上传开始
+    func resumeSession(sid: String) {
+        currentSession = SessionManager(sid: sid)
+        if let s = currentSession {
+            workspaceStep = (!s.manifest.trips.isEmpty || !s.manifest.local.isEmpty) ? .finalize : .upload
+        } else {
+            workspaceStep = .upload
+        }
+        page = .workspace
+    }
+
+    /// 刷新「最近会话」列表（首页出现时调）
+    func refreshSessions() {
+        sessions = Sessions.list()
     }
 
     func clearCurrentSession() {

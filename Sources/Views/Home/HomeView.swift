@@ -111,9 +111,74 @@ struct HomeView: View {
             }
             .padding(.horizontal, 48)
 
+            // 最近会话（有历史时显示）
+            if !state.sessions.isEmpty {
+                RecentSessionsSection(sessions: state.sessions) { sid in
+                    state.resumeSession(sid: sid)
+                }
+                .padding(.horizontal, 48)
+                .padding(.top, 28)
+            }
+
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { state.refreshSessions() }
+    }
+}
+
+/// 首页「最近会话」列表
+private struct RecentSessionsSection: View {
+    let sessions: [SessionSummary]
+    let onResume: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("最近会话")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.secondary)
+            ForEach(sessions.prefix(5)) { s in
+                SessionRow(summary: s) { onResume(s.sid) }
+            }
+        }
+        .frame(maxWidth: 560, alignment: .leading)
+    }
+}
+
+private struct SessionRow: View {
+    let summary: SessionSummary
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(summary.billCount) 张票据 · \(summary.tripCount) 个行程")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.primary)
+                    Text(summary.createdLabel)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(hovering ? Color.gray.opacity(0.10) : Color.gray.opacity(0.05))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
     }
 }
 

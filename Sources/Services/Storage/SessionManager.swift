@@ -28,13 +28,7 @@ final class SessionManager {
 
     init(sid: String) {
         self.sid = sid
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first!
-            .appendingPathComponent("Reimbursement", isDirectory: true)
-            .appendingPathComponent("sessions", isDirectory: true)
-            .appendingPathComponent(sid, isDirectory: true)
+        let appSupport = Sessions.sessionsDir().appendingPathComponent(sid, isDirectory: true)
         self.rootDir = appSupport
 
         // 加载或创建 manifest
@@ -503,6 +497,24 @@ final class SessionManager {
         }
     }
 
+    /// 删除单张票据（按 uid）
+    func removeBill(uid: String) {
+        manifest.bills.removeAll { $0.uid == uid }
+        manifest.needsReviewCount = manifest.bills.filter { $0.needsReview }.count
+        save()
+    }
+
+    /// 用同 uid 的新识别结果替换旧票据（重新识别用）；找不到则追加
+    func replaceBill(_ bill: BillInfo) {
+        if let idx = manifest.bills.firstIndex(where: { $0.uid == bill.uid }) {
+            manifest.bills[idx] = bill
+        } else {
+            manifest.bills.append(bill)
+        }
+        manifest.needsReviewCount = manifest.bills.filter { $0.needsReview }.count
+        save()
+    }
+
     /// 清空整个 session
     func clear() throws {
         try FileManager.default.removeItem(at: rootDir)
@@ -696,9 +708,57 @@ final class SessionManager {
 
 // MARK: - Session 创建工具
 
+/// 会话摘要（列表页用）
+struct SessionSummary: Identifiable, Sendable {
+    let sid: String
+    let createdAt: String
+    let billCount: Int
+    let tripCount: Int
+
+    var id: String { sid }
+
+    /// 创建时间的展示形式（原始 ISO 8601 截取日期时间）
+    var createdLabel: String {
+        // "2026-09-10T12:34:56Z" → "2026-09-10 12:34"
+        let s = String(createdAt.prefix(16))
+        return s.replacingOccurrences(of: "T", with: " ")
+    }
+}
+
 enum Sessions {
     static func createNew() -> String {
         UUID().uuidString.lowercased()
+    }
+
+    /// sessions 根目录（~/Library/Application Support/Reimbursement/sessions）
+    static func sessionsDir() -> URL {
+        FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first!
+            .appendingPathComponent("Reimbursement", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+    }
+
+    /// 列出所有已保存的会话摘要（按创建时间倒序）
+    static func list() -> [SessionSummary] {
+        let dir = sessionsDir()
+        let items = (try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+        )) ?? []
+        var result: [SessionSummary] = []
+        for url in items {
+            let manifestURL = url.appendingPathComponent("manifest.json")
+            guard let data = try? Data(contentsOf: manifestURL),
+                  let m = try? JSONDecoder().decode(SessionManifest.self, from: data) else { continue }
+            result.append(SessionSummary(
+                sid: m.sid,
+                createdAt: m.createdAt,
+                billCount: m.bills.count,
+                tripCount: m.trips.count
+            ))
+        }
+        return result.sorted { $0.createdAt > $1.createdAt }
     }
 }
 
