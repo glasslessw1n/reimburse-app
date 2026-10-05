@@ -123,10 +123,10 @@ struct PackageStep: View {
                 .font(.system(size: 48))
                 .foregroundStyle(.gray.opacity(0.6))
             Text("准备打包")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.title2.weight(.semibold))
             if let session = state.currentSession {
                 Text("\(session.manifest.trips.count) 个行程 · \(session.manifest.local.count) 项本地 · 共 \(session.manifest.bills.count) 张")
-                    .font(.system(size: 13))
+                    .font(.body)
                     .foregroundStyle(.secondary)
             }
             Toggle("生成 报销明细.xlsx", isOn: $includeExcel)
@@ -140,16 +140,16 @@ struct PackageStep: View {
                 .font(.system(size: 56))
                 .foregroundStyle(.green)
             Text("已保存")
-                .font(.system(size: 22, weight: .semibold))
+                .font(.title.weight(.semibold))
             if let url = vm.savedURL {
                 // 绝对路径（可选择 + 复制）
                 VStack(alignment: .leading, spacing: 6) {
                     Text("保存路径")
-                        .font(.system(size: 11))
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                     HStack(spacing: 8) {
                         Text(url.path)
-                            .font(.system(size: 12, design: .monospaced))
+                            .font(.callout.monospaced())
                             .textSelection(.enabled)
                             .lineLimit(2)
                             .truncationMode(.middle)
@@ -164,7 +164,7 @@ struct PackageStep: View {
                             NSPasteboard.general.setString(url.path, forType: .string)
                         } label: {
                             Image(systemName: "doc.on.doc")
-                                .font(.system(size: 13))
+                                .font(.body)
                         }
                         .buttonStyle(.bordered)
                         .hoverLift()
@@ -191,9 +191,9 @@ struct PackageStep: View {
                 .font(.system(size: 48))
                 .foregroundStyle(.orange)
             Text("打包失败")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.title2.weight(.semibold))
             Text(err)
-                .font(.system(size: 12))
+                .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 420)

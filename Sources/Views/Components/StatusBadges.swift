@@ -35,7 +35,7 @@ private struct StatusIcon: View {
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: systemName)
-                .font(.system(size: 12, weight: .medium))
+                .font(.callout.weight(.medium))
                 .foregroundStyle(.secondary)
             Circle()
                 .fill(ok ? Color.green : Color.gray.opacity(0.4))

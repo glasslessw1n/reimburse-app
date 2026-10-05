@@ -18,7 +18,7 @@ struct FinalizeStep: View {
             HStack {
                 if let session = state.currentSession {
                     Text("\(session.manifest.trips.count) 个行程 · \(session.manifest.local.count) 项本地")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.callout.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -128,14 +128,14 @@ private struct TripCard: View {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(dateLabel)
-                        .font(.system(size: 18, weight: .semibold).monospacedDigit())
+                        .font(.title2.weight(.semibold).monospacedDigit())
                     if !cityLabel.isEmpty {
                         Text(cityLabel)
-                            .font(.system(size: 13))
+                            .font(.body)
                             .foregroundStyle(.secondary)
                     } else {
                         Text("未识别城市")
-                            .font(.system(size: 13))
+                            .font(.body)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -143,23 +143,23 @@ private struct TripCard: View {
                 VStack(alignment: .trailing, spacing: 0) {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text("¥")
-                            .font(.system(size: 12))
+                            .font(.callout)
                             .foregroundStyle(.secondary)
                         AnimatedNumber(value: totalAmount)
-                            .font(.system(size: 22, weight: .semibold))
+                            .font(.title.weight(.semibold))
                             .foregroundStyle(.primary)
                     }
                     Text("\(trip.bills.count) 张")
-                        .font(.system(size: 11))
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                     if missingInvoiceCount > 0 {
                         Label("\(missingInvoiceCount) 段缺发票", systemImage: "exclamationmark.triangle")
-                            .font(.system(size: 10))
+                            .font(.footnote)
                             .foregroundStyle(.orange)
                     }
                 }
                 Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 11))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(.leading, 8)
             }
@@ -202,26 +202,26 @@ private struct LocalCard: View {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("本地")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.title2.weight(.semibold))
                     Text("无法归入行程的本地票据")
-                        .font(.system(size: 13))
+                        .font(.body)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 0) {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text("¥")
-                            .font(.system(size: 12))
+                            .font(.callout)
                             .foregroundStyle(.secondary)
                         AnimatedNumber(value: totalAmount)
-                            .font(.system(size: 22, weight: .semibold))
+                            .font(.title.weight(.semibold))
                     }
                     Text("\(bills.count) 张")
-                        .font(.system(size: 11))
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 11))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(.leading, 8)
             }

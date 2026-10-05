@@ -15,11 +15,11 @@ struct ProgressBar: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(label)
-                    .font(.system(size: 12))
+                    .font(.callout)
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text("\(Int(value * 100))%")
-                    .font(.system(size: 12, weight: .medium).monospacedDigit())
+                    .font(.callout.weight(.medium).monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             GeometryReader { geo in

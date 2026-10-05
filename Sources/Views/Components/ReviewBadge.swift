@@ -14,7 +14,7 @@ struct ReviewBadge: View {
 
     var body: some View {
         Label("\(count) 张需确认", systemImage: "exclamationmark.triangle")
-            .font(.system(size: 11))
+            .font(.subheadline)
             .foregroundStyle(.orange)
             .scaleEffect(appeared ? 1.0 : 0.5)
             .animation(.spring(response: 0.4, dampingFraction: 0.5), value: appeared)

@@ -179,9 +179,9 @@ struct UploadStep: View {
                 // 标题 + 计数
                 HStack {
                     Text("识别结果")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.headline)
                     Text("(\(session.manifest.bills.count))")
-                        .font(.system(size: 13))
+                        .font(.body)
                         .foregroundStyle(.secondary)
                     Spacer()
                     if session.manifest.needsReviewCount > 0 {
@@ -294,17 +294,17 @@ struct UploadStep: View {
                 ProgressView()
                     .controlSize(.small)
                 Text(vm.stage)
-                    .font(.system(size: 12))
+                    .font(.callout)
                     .foregroundStyle(.primary)
                 Spacer()
                 Text("\(vm.done) / \(vm.total)")
-                    .font(.system(size: 12).monospacedDigit())
+                    .font(.callout.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             ProgressBar(value: progress, label: "")
             if !vm.current.isEmpty {
                 Text(vm.current)
-                    .font(.system(size: 11))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)

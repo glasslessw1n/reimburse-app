@@ -35,10 +35,10 @@ struct DropZone: View {
                     .font(.system(size: 36))
                     .foregroundStyle(.gray.opacity(0.6))
                 Text("把发票、单据拖进来")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.title3.weight(.semibold))
                     .foregroundStyle(.primary)
                 Text("支持 PDF / JPG / PNG · 一次可拖多张")
-                    .font(.system(size: 12))
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
         }

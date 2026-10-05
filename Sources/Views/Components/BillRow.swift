@@ -82,7 +82,7 @@ struct BillRow: View {
             HStack(spacing: 12) {
                 // 类型徽章
                 Text(bill.billType.displayName)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
@@ -92,10 +92,10 @@ struct BillRow: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(headline)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.body.weight(.medium))
                         .lineLimit(1)
                     Text(subtitle)
-                        .font(.system(size: 11))
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -103,11 +103,11 @@ struct BillRow: View {
                 Spacer()
 
                 Text(String(format: "¥%.2f", bill.amount))
-                    .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                    .font(.headline.monospacedDigit())
                     .foregroundStyle(.primary)
 
                 Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 11))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 12)
@@ -147,11 +147,11 @@ struct BillRow: View {
                 if let v = value, !v.isEmpty {
                     HStack(alignment: .top, spacing: 8) {
                         Text(key)
-                            .font(.system(size: 11))
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .frame(width: 100, alignment: .leading)
                         Text(v)
-                            .font(.system(size: 11))
+                            .font(.subheadline)
                             .foregroundStyle(.primary)
                             .textSelection(.enabled)
                         Spacer()
@@ -162,9 +162,9 @@ struct BillRow: View {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle")
                         .foregroundStyle(.orange)
-                        .font(.system(size: 11))
+                        .font(.subheadline)
                     Text(bill.error)
-                        .font(.system(size: 11))
+                        .font(.subheadline)
                         .foregroundStyle(.orange)
                 }
             }

@@ -47,7 +47,7 @@ struct HomeView: View {
                         )
 
                         Text("上传票据，LLM 自动识别票据类型、抽取关键字段、关联水单发票、按行程归档。一键生成报销明细。")
-                            .font(.system(size: 15))
+                            .font(.title3)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: 460, alignment: .leading)
                             .padding(.top, 12)
@@ -61,9 +61,9 @@ struct HomeView: View {
                                 .font(.system(size: 16))
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("尚未配置 LLM")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.headline)
                                 Text("配置后才能自动识别票据类型和字段")
-                                    .font(.system(size: 11))
+                                    .font(.subheadline)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
@@ -88,7 +88,7 @@ struct HomeView: View {
                         state.startNewSession()
                     } label: {
                         Text("开始整理 →")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.title3.weight(.semibold))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 4)
                     }
@@ -131,14 +131,14 @@ private struct RecentSessionsSection: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text("最近会话")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.headline)
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button("清空历史") {
                     showClearConfirm = true
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 11))
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .help("删除所有历史会话")
             }
@@ -174,14 +174,14 @@ private struct SessionRow: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 11))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                 Text("\(summary.billCount) 张 · \(summary.tripCount) 行程")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.callout.weight(.medium))
                     .foregroundStyle(.primary)
                 Spacer()
                 Text(summary.createdLabel)
-                    .font(.system(size: 11).monospacedDigit())
+                    .font(.subheadline.monospacedDigit())
                     .foregroundStyle(.secondary)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 9))
@@ -210,11 +210,12 @@ private struct HowToCard: View {
                         .fill(Color.brandOrange)
                         .frame(width: 22, height: 22)
                     Text("i")
-                        .font(.system(size: 13, weight: .bold, design: .serif))
+                        .font(.body.weight(.bold))
+                        .fontDesign(.serif)
                         .foregroundStyle(.white)
                 }
                 Text("操作指引")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.title3.weight(.semibold))
             }
             .padding(.bottom, 4)
 
@@ -248,13 +249,13 @@ private struct HowToRow: View {
                     .fill(Color.brandOrange.opacity(0.12))
                     .frame(width: 22, height: 22)
                 Text(num)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.callout.weight(.bold))
                     .foregroundStyle(.brandOrange)
             }
             VStack(alignment: .leading, spacing: 2) {
                 // 动作短语加粗 + 说明
                 Text(.init("**\(head)** — \(tail)"))
-                    .font(.system(size: 13))
+                    .font(.body)
                     .foregroundStyle(.primary)
             }
             .fixedSize(horizontal: false, vertical: true)

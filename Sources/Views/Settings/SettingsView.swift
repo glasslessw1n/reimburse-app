@@ -40,7 +40,7 @@ struct SettingsView: View {
             // 标题栏
             HStack {
                 Text("LLM 设置")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.title2.weight(.semibold))
                 Spacer()
                 Button("关闭") { dismiss() }
                     .buttonStyle(.plain)
@@ -92,7 +92,7 @@ struct SettingsView: View {
                             apiKeyVisible.toggle()
                         } label: {
                             Image(systemName: apiKeyVisible ? "eye.slash" : "eye")
-                                .font(.system(size: 12))
+                                .font(.callout)
                                 .foregroundStyle(.secondary)
                                 .frame(width: 22, height: 22)
                                 .background(
@@ -127,7 +127,7 @@ struct SettingsView: View {
                             HStack(spacing: 4) {
                                 if isFetchingModels { ProgressView().scaleEffect(0.5) }
                                 Text(isFetchingModels ? "加载中" : "拉取列表")
-                                    .font(.system(size: 11))
+                                    .font(.subheadline)
                             }
                         }
                         .buttonStyle(.bordered)
@@ -138,12 +138,12 @@ struct SettingsView: View {
 
                 if !availableModels.isEmpty {
                     Text("已发现 \(availableModels.count) 个模型")
-                        .font(.system(size: 11))
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .padding(.leading, labelWidth + 12)
                 } else if !testResult.isEmpty && testColor == .red {
                     Text("提示：如果「拉取列表」报错，可手动在 Model 框输入模型名")
-                        .font(.system(size: 10))
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.leading, labelWidth + 12)
                 }
@@ -179,7 +179,7 @@ struct SettingsView: View {
             VStack(spacing: 10) {
                 if !testResult.isEmpty {
                     Text(testResult)
-                        .font(.system(size: 11))
+                        .font(.subheadline)
                         .foregroundStyle(testColor)
                         .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -225,7 +225,7 @@ struct SettingsView: View {
     private func fieldRow(_ label: String, @ViewBuilder field: () -> some View) -> some View {
         HStack(alignment: .center, spacing: 12) {
             Text(label)
-                .font(.system(size: 12))
+                .font(.callout)
                 .foregroundStyle(.secondary)
                 .frame(width: labelWidth, alignment: .leading)
             field()
@@ -237,7 +237,7 @@ struct SettingsView: View {
     private func compactField(_ label: String, @ViewBuilder field: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
-                .font(.system(size: 11))
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
             field()
         }
