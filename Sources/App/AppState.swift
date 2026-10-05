@@ -87,6 +87,12 @@ final class AppState {
         sessions = Sessions.list()
     }
 
+    /// 清空所有历史会话
+    func clearHistory() {
+        Sessions.clearAll()
+        refreshSessions()
+    }
+
     func clearCurrentSession() {
         currentSession = nil
         workspaceStep = .upload

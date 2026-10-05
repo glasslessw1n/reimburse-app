@@ -13,14 +13,6 @@ struct HomeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 顶部 status bar
-            HStack {
-                Spacer()
-                StatusBadges()
-            }
-            .padding(.horizontal, 32)
-            .padding(.top, 20)
-
             Spacer()
 
             // Hero 区（左右两栏）
@@ -102,9 +94,11 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     HowToCard()
                     if !state.sessions.isEmpty {
-                        RecentSessionsSection(sessions: state.sessions) { sid in
-                            state.resumeSession(sid: sid)
-                        }
+                        RecentSessionsSection(
+                            sessions: state.sessions,
+                            onResume: { sid in state.resumeSession(sid: sid) },
+                            onClear: { state.clearHistory() }
+                        )
                     }
                 }
                 .frame(width: 460, alignment: .leading)
@@ -115,6 +109,11 @@ struct HomeView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { state.refreshSessions() }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                StatusBadges()
+            }
+        }
     }
 }
 
@@ -122,13 +121,25 @@ struct HomeView: View {
 private struct RecentSessionsSection: View {
     let sessions: [SessionSummary]
     let onResume: (String) -> Void
+    let onClear: () -> Void
+    @State private var showClearConfirm = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("最近会话")
-                .font(.system(size: 13, weight: .semibold))
+            HStack {
+                Text("最近会话")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("清空历史") {
+                    showClearConfirm = true
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
-                .padding(.bottom, 6)
+                .help("删除所有历史会话")
+            }
+            .padding(.bottom, 6)
 
             ForEach(sessions.prefix(4)) { s in
                 SessionRow(summary: s) { onResume(s.sid) }
@@ -142,6 +153,12 @@ private struct RecentSessionsSection: View {
                 .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)
         )
         .shadow(color: Color.black.opacity(0.14), radius: 18, y: 6)
+        .alert("清空历史？", isPresented: $showClearConfirm) {
+            Button("取消", role: .cancel) { }
+            Button("清空", role: .destructive) { onClear() }
+        } message: {
+            Text("将删除所有历史会话，该操作不可撤销。")
+        }
     }
 }
 

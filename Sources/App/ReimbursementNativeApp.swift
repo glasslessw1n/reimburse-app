@@ -39,7 +39,7 @@ struct ReimbursementNativeApp: App {
                 .disabled(state.currentSession == nil)
             }
             CommandGroup(replacing: .appSettings) {
-                Button("LLM 设置…") {
+                Button("设置…") {
                     state.showSettings = true
                 }
                 .keyboardShortcut(",", modifiers: [.command])

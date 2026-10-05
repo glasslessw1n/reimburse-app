@@ -749,6 +749,17 @@ enum Sessions {
         }
         return result.sorted { $0.createdAt > $1.createdAt }
     }
+
+    /// 清空所有历史会话（删除 sessions 目录下全部子目录，保留目录本身）
+    static func clearAll() {
+        let dir = sessionsDir()
+        let items = (try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+        )) ?? []
+        for url in items {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
 }
 
 // MARK: - 日期工具
