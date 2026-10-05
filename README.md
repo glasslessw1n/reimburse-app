@@ -17,9 +17,11 @@
 - **零依赖 OCR**：Apple Vision（中文 + 英文，on-device，识别准确率高）
 - **PDF 处理**：PDFKit 优先取文字层，无文字层自动渲染图片 + OCR
 - **14 种票据类型**：火车票、机票行程单、登机牌、酒店水单/发票、滴滴行程/发票、餐饮、通信、加油、通行费等（增值税发票按消费内容自动归类）
-- **智能归类**：按日期 + 城市连通性自动合并差旅行程
-- **酒店水单/发票自动配对**：金额完全匹配时合并为一条住宿发票
-- **ZIP 打包**：保存到 `~/Downloads/`，自动跳过空目录
+- **智能归类**：按日期 + 城市连通性自动合并差旅行程（跨年日期精确）
+- **酒店水单/发票自动配对**：金额匹配 + 酒店名/城市相似度消歧，避免同金额误配
+- **会话管理**：首页「最近会话」恢复历史会话、一键清空历史
+- **单票操作**：右键单票「重新识别」/「删除」，无需整批清空
+- **ZIP 打包**：copy 到临时 staging 再打包（不动 originals，可重复打包），保存到 `~/Downloads/`
 - **Excel 明细生成**：手写 xlsx（zip + OOXML，无第三方依赖），按行程分组，5 列结构（票据类别 / 日期/区间 / 金额 / 明细 / 备注），含小计和总计
 
 ---
@@ -142,7 +144,7 @@ bash BuildScripts/build_native.sh
 
 ## ⚙️ 配置 LLM
 
-首次启动 → 顶部 `LLM —` 灰色徽章 → 点它打开设置面板。
+首次启动 → 右上角 ⚙️ 齿轮图标 → 打开设置面板。
 
 | Provider | Base URL | 默认 Model |
 |---|---|---|
@@ -160,9 +162,9 @@ bash BuildScripts/build_native.sh
 
 ## 📋 使用流程
 
-1. **首页** → 点 `开始整理 →`
+1. **首页** → 点 `开始整理 →` 新建会话，或从「最近会话」继续上次未完成
 2. **拖文件** 到上传框（支持 PDF / JPG / PNG / WEBP，多文件并行处理）
-3. **识别结果** 在拖放区下方实时显示，点行展开看 OCR 原文 + LLM 抽取字段
+3. **识别结果** 在拖放区下方实时显示，点行展开看 OCR 原文 + LLM 抽取字段；识别有误可右键「重新识别」/「删除」
 4. 点 `下一步：整理 →`，系统按日期 + 城市连通性合并差旅行程
 5. 检查每张卡的金额、行程归属；如有异常回 `补传`
 6. 点 `保存到下载目录 →`，ZIP 落到 `~/Downloads/`，可一键 Finder 中打开
@@ -203,24 +205,36 @@ ZIP 结构：
 
 ## ✅ 已完成
 
+**基础功能（M1–M9）**
+
 - [x] **M1** 项目骨架（XcodeGen + SwiftUI App）
 - [x] **M2** 数据模型（BillType + BillTypeFields + Receipt + AnyJSONValue）
 - [x] **M3** OCR 服务（Vision + PDFKit）
 - [x] **M4** LLM 客户端（OpenAI 兼容协议 + 自动 prompt 生成 + 重试）
-- [x] **M5** 存储 + 行程归类 + 酒店水单/发票金额匹配
+- [x] **M5** 存储 + 行程归类 + 酒店水单/发票匹配
 - [x] **M6** UI 骨架 + 设置面板（Provider 预设 + 模型下拉）
 - [x] **M7** 上传 + 实时识别列表（自适应滚动条 + 进度面板）
 - [x] **M8** 行程卡片 + 打包（ditto 自动跳空目录）
 - [x] **M9** Release 打包 + ad-hoc 签名 + dmg
 
+**v2.0.0 完善**
+
+- [x] 正确性：跨年日期精确、酒店匹配相似度消歧、`BillInfo.id` 唯一化、copy 打包、Excel 滴滴总额不漏钱、prompt 计数动态化
+- [x] 会话管理：首页「最近会话」恢复 + 清空历史
+- [x] 单票操作：右键「重新识别」/「删除」
+- [x] UI 现代化：状态图标 + 齿轮设置、hover 浮动动效、segmented 步骤切换、操作指引更新
+- [x] 测试：39 个 Swift Testing 用例（5 个 suite）
+
 ---
 
 ## 🚧 已知限制 / 后续计划
 
-- **报销系统填报**（Playwright 那部分）—— Swift 没有原生等价物，**v0.2.0 规划**，可选 WKWebView + JS 注入 或外接脚本桥
-- **后处理兜底**（Python 几个启发式如 boarding_pass 检测、hotel 日期偏移等）—— **v0.3.0 规划**，按用户实测 case 增量加
+- **报销系统填报**（Playwright 那部分）—— Swift 没有原生等价物，可选 WKWebView + JS 注入 或外接脚本桥
+- **行程目录名跨年显示**：目录名用 MMDD 不显示年份，跨年行程（12 月→1 月）目录名显示为 `1230-0102`（排序/合并正确，但年份不可见）
+- **Liquid Glass**：当前用 NSVisualEffectView 毛玻璃，未迁移到 macOS 26 原生 `.glassEffect`（需实机截图验证视觉）
+- **语义字号**：视图仍用硬编码字号，未全面迁移到 `.title`/`.body` 等语义样式（Dynamic Type 适配待做）
 - **macOS Gatekeeper**：dmg 是 ad-hoc 签名，首次启动需右键 → 打开 → 信任
-- **OCR Sendable warning**：3 个 Vision framework 非 Sendable warning，不影响功能
+- **OCR Sendable warning**：Vision framework 非 Sendable warning，不影响功能
 
 ---
 
