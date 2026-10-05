@@ -50,19 +50,17 @@ struct PackageStep: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: 20) {
-                    if vm.savedURL != nil {
-                        successView
-                    } else if let err = vm.error {
-                        errorView(err)
-                    } else {
-                        readyView
-                    }
+            GeometryReader { geo in
+                ScrollView {
+                    statusCard
+                        .frame(maxWidth: 520)
+                        .frame(maxWidth: .infinity)   // 水平居中
+                        .padding(.horizontal, 32)
+                        .padding(.vertical, 24)
+                        .frame(minHeight: geo.size.height, alignment: .center)  // 垂直居中
                 }
-                .padding(.horizontal, 32)
-                .padding(.vertical, 24)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
 
@@ -99,6 +97,27 @@ struct PackageStep: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 16)
         }
+    }
+
+    /// 中间状态卡片（圆角玻璃卡包裹，居中显示，与背景区分）
+    @ViewBuilder
+    private var statusCard: some View {
+        Group {
+            if vm.savedURL != nil {
+                successView
+            } else if let err = vm.error {
+                errorView(err)
+            } else {
+                readyView
+            }
+        }
+        .padding(24)
+        .background { VisualEffectView().clipShape(RoundedRectangle(cornerRadius: 12)).allowsHitTesting(false) }
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)
+        )
+        .shadow(color: Color.black.opacity(0.14), radius: 18, y: 6)
     }
 
     private var readyView: some View {
@@ -155,7 +174,6 @@ struct PackageStep: View {
                         .help("复制路径")
                     }
                 }
-                .padding(.horizontal, 32)
                 .padding(.top, 8)
 
                 Button {
@@ -181,7 +199,7 @@ struct PackageStep: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+                .frame(maxWidth: 420)
         }
     }
 }
