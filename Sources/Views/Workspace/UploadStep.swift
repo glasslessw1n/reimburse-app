@@ -241,6 +241,7 @@ struct UploadStep: View {
                     showClearConfirm = true
                 }
                 .buttonStyle(.bordered)
+                .hoverLift()
                 .disabled(state.currentSession?.manifest.bills.isEmpty ?? true)
 
                 Spacer()

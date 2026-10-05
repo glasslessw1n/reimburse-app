@@ -17,12 +17,33 @@ extension ShapeStyle where Self == Color {
     static var brandOrange: Color { Color.brandOrange }
 }
 
+/// hover 浮动动效：轻微放大 + 上浮 + 阴影（尊重「减弱动态效果」）
+struct HoverLift: ViewModifier {
+    var scale: CGFloat = 1.03
+    @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(!reduceMotion && hovering ? scale : 1.0)
+            .offset(y: !reduceMotion && hovering ? -1.5 : 0)
+            .shadow(color: Color.black.opacity(!reduceMotion && hovering ? 0.20 : 0), radius: 6, y: 2)
+            .onHover { hovering = $0 }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: hovering)
+    }
+}
+
 extension View {
-    /// 主行动按钮统一风格（橙色 prominent）
-    /// 原生按钮自带 hover 反馈，无需额外 hoverScale。
+    /// hover 浮动动效（默认 1.03）
+    func hoverLift(_ scale: CGFloat = 1.03) -> some View {
+        modifier(HoverLift(scale: scale))
+    }
+
+    /// 主行动按钮统一风格（橙色 prominent + hover 浮动）
     func primaryAction() -> some View {
         self
             .buttonStyle(.borderedProminent)
             .tint(.brandOrange)
+            .hoverLift()
     }
 }

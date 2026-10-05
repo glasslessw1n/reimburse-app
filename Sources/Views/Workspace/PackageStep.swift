@@ -71,6 +71,7 @@ struct PackageStep: View {
                     state.advance(to: .finalize)
                 }
                 .buttonStyle(.bordered)
+                .hoverLift()
                 .disabled(vm.packing)
 
                 Spacer()
@@ -150,6 +151,7 @@ struct PackageStep: View {
                                 .font(.system(size: 13))
                         }
                         .buttonStyle(.bordered)
+                        .hoverLift()
                         .help("复制路径")
                     }
                 }

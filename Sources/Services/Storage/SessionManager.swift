@@ -701,11 +701,16 @@ struct SessionSummary: Identifiable, Sendable {
 
     var id: String { sid }
 
-    /// 创建时间的展示形式（原始 ISO 8601 截取日期时间）
+    /// 创建时间的展示形式（ISO 8601 UTC → 本地时区 "yyyy-MM-dd HH:mm"）
     var createdLabel: String {
-        // "2026-09-10T12:34:56Z" → "2026-09-10 12:34"
-        let s = String(createdAt.prefix(16))
-        return s.replacingOccurrences(of: "T", with: " ")
+        // createdAt 是 UTC 的 "2026-09-10T12:34:56Z"，需转本地时区展示，否则与系统时间差 8 小时
+        guard let date = try? Date(createdAt, strategy: .iso8601) else {
+            return String(createdAt.prefix(16)).replacingOccurrences(of: "T", with: " ")
+        }
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        f.timeZone = .current
+        return f.string(from: date)
     }
 }
 

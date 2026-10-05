@@ -26,6 +26,7 @@ struct FinalizeStep: View {
                     state.advance(to: .upload)
                 }
                 .buttonStyle(.bordered)
+                .hoverLift()
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
@@ -59,6 +60,7 @@ struct FinalizeStep: View {
                     state.advance(to: .upload)
                 }
                 .buttonStyle(.bordered)
+                .hoverLift()
 
                 Spacer()
 
