@@ -119,7 +119,7 @@ final class SessionManager {
     /// 4. toll_invoice 顺序分配数字序号
     /// 5. TripResolver.assignTrips 行程归类
     /// 6. 给所有 bill 填 targetSubdir/targetFilename
-    func finalize() {
+    func finalize(homeCities: Set<String> = []) {
         var bills = manifest.bills
 
         // ── 1. hotel invoice ↔ folio match ──
@@ -133,11 +133,7 @@ final class SessionManager {
         // 所以 didi 字母在 TripResolver 之后、文件 move 之前分配也可以。
         // 这里先做 hotel match，trip 分配留给后面。
 
-        // ── 5. 行程归类 ──
-        // 注入 EXCLUDE_CITIES（常驻地）作为切分依据
-        let homeCitiesRaw = ProcessInfo.processInfo.environment["EXCLUDE_CITIES"] ?? ""
-        let homeCities = TripResolver.parseHomeCities(homeCitiesRaw)
-
+        // ── 5. 行程归类（homeCities 由调用方从设置传入，不再读进程环境变量）──
         var (trips, local) = TripResolver.assignTrips(bills: bills, homeCities: homeCities)
         // ── 2/3/4. 字母/序号分配（在 trip/local 容器内部做，确保每个 trip 内独立）──
         for i in 0..<trips.count { Self.assignSequences(in: &trips[i].bills) }
@@ -670,18 +666,6 @@ final class SessionManager {
         return s.isEmpty ? "0" : s
     }
 
-    /// 销方名简化：去 "管理有限公司" / "有限公司" / "有限责任公司" / "公司" / "集团"，限 14 字
-    private static func shortSeller(_ name: String?) -> String {
-        var n = (name ?? "").trimmingCharacters(in: .whitespaces)
-        guard !n.isEmpty else { return "" }
-        let suffixes = ["管理有限公司", "有限公司", "有限责任公司", "公司", "集团"]
-        for s in suffixes where n.hasSuffix(s) {
-            n = String(n.dropLast(s.count))
-            break
-        }
-        return String(n.prefix(14))
-    }
-
     /// 从酒店全名提取城市：`"上海外滩茂悦大酒店"` → "上海"
     private static func extractHotelCity(from seller: String) -> String? {
         guard !seller.isEmpty else { return nil }
@@ -762,20 +746,9 @@ enum Sessions {
     }
 }
 
-// MARK: - 常驻地判断（用于 hotel folio/invoice city 修正）
+// MARK: - 日期工具
 
 extension SessionManager {
-    /// 判断给定城市是否在 EXCLUDE_CITIES（常驻地）列表中
-    /// 用于修 hotel_folio 的"客人地址被误识别为酒店城市" bug
-    fileprivate static func isHomeCity(_ city: String) -> Bool {
-        let raw = ProcessInfo.processInfo.environment["EXCLUDE_CITIES"] ?? ""
-        let set = Set(raw
-            .split(separator: ",")
-            .map { String($0).trimmingCharacters(in: .whitespaces).lowercased() }
-            .filter { !$0.isEmpty })
-        return set.contains(city.trimmingCharacters(in: .whitespaces).lowercased())
-    }
-
     /// 两个 YYYY-MM-DD 之间的天数差
     private static func diffDays(from a: String, to b: String) -> Int {
         guard a.count >= 10, b.count >= 10 else { return -1 }

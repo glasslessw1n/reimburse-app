@@ -285,7 +285,6 @@ struct SettingsView: View {
             .filter { !$0.isEmpty }
         state.settingsStore.settings = s
         try? state.settingsStore.save()
-        state.settingsStore.loadIntoProcessEnv()
         state.llmConfigured = !s.apiKey.isEmpty
 
         withAnimation { showSavedTip = true }

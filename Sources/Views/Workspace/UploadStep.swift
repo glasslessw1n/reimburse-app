@@ -247,8 +247,8 @@ struct UploadStep: View {
                 Spacer()
 
                 Button {
-                    // 触发 SessionManager.finalize() 跑行程归类（按日期+城市连通性合并）
-                    state.currentSession?.finalize()
+                    // 触发行程归类（按日期+城市连通性合并）；常驻地从设置显式传入
+                    state.currentSession?.finalize(homeCities: state.settingsStore.settings.homeCities)
                     state.advance(to: .finalize)
                 } label: {
                     Text("下一步：整理 →")

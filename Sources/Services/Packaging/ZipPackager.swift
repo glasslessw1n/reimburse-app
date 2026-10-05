@@ -34,7 +34,8 @@ enum ZipPackager {
 
     /// 打包并返回 ZIP 路径（不删除 session 目录）
     /// - Parameter includeExcel: 是否生成 报销明细.xlsx 放入 ZIP
-    static func package(session: SessionManager, includeExcel: Bool = true) throws -> URL {
+    /// - Parameter homeCities: 常驻地集合（生成 Excel 行程分组用，从设置传入）
+    static func package(session: SessionManager, includeExcel: Bool = true, homeCities: Set<String> = []) throws -> URL {
         let root = session.rootDir
         guard FileManager.default.fileExists(atPath: root.path) else {
             throw PackageError.sessionNotFound
@@ -70,7 +71,6 @@ enum ZipPackager {
             if includeExcel {
                 let xlsxURL = stagingFolder.appendingPathComponent("报销明细.xlsx")
                 do {
-                    let homeCities = TripResolver.parseHomeCities(ProcessInfo.processInfo.environment["EXCLUDE_CITIES"] ?? "")
                     try ExcelBuilder.build(bills: session.manifest.bills, homeCities: homeCities, outputURL: xlsxURL)
                 } catch {
                     FileHandle.standardError.write(Data("[ZipPackager] Excel 生成失败: \(error.localizedDescription)\n".utf8))

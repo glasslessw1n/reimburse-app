@@ -21,13 +21,6 @@ import Foundation
 
 enum TripResolver {
 
-    /// 解析「常驻地」环境变量（逗号分隔），输出小写城市集合
-    static func parseHomeCities(_ raw: String) -> Set<String> {
-        Set(raw.split(separator: ",")
-            .map { String($0).trimmingCharacters(in: .whitespaces).lowercased() }
-            .filter { !$0.isEmpty })
-    }
-
     /// 锚点票据（能确定行程归属：交通票）
     /// 酒店水单/发票**不算 anchor**——它们就近归到 trip（≤7 天），
     /// 因为酒店发票只有 city、没有 from/to 城市，

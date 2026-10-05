@@ -54,9 +54,8 @@ final class AppState {
     /// 全局设置
     let settingsStore = LLMSettingsStore()
 
-    /// 启动时同步读 .env，并探测 LLM 是否真可用
+    /// 启动时读 .env，并探测 LLM 是否真可用
     init() {
-        settingsStore.loadIntoProcessEnv()
         llmConfigured = !settingsStore.settings.apiKey.isEmpty
         llmAvailable = llmConfigured  // TODO: 启动时 ping 一次
         ocrAvailable = TextExtractor.isAvailable

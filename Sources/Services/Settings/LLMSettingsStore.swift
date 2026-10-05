@@ -24,6 +24,11 @@ struct LLMSettings {
     /// 行程分组用的"常驻地"列表（trip 名里要去掉的城市）
     var excludeCities: [String] = []
 
+    /// 常驻地集合（小写，供 TripResolver 切分用）
+    var homeCities: Set<String> {
+        Set(excludeCities.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }.filter { !$0.isEmpty })
+    }
+
     var llmConfig: LLMConfig {
         LLMConfig(apiKey: apiKey, baseURL: baseURL, model: model, timeout: timeout)
     }
@@ -66,16 +71,6 @@ final class LLMSettingsStore {
         }
         let content = lines.joined(separator: "\n") + "\n"
         try content.write(to: envPath, atomically: true, encoding: .utf8)
-    }
-
-    /// 同步读：进程启动时调用，把 .env 加载到环境变量
-    func loadIntoProcessEnv() {
-        setenv("LLM_API_KEY", settings.apiKey, 1)
-        setenv("LLM_BASE_URL", settings.baseURL.absoluteString, 1)
-        setenv("LLM_MODEL", settings.model, 1)
-        setenv("BUYER_NAME", settings.buyerName, 1)
-        setenv("BUYER_TAX_NO", settings.buyerTaxNo, 1)
-        setenv("EXCLUDE_CITIES", settings.excludeCities.joined(separator: ","), 1)
     }
 
     // MARK: - .env 解析

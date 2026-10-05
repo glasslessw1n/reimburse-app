@@ -15,7 +15,7 @@ final class PackageViewModel {
     var error: String?
     var savedURL: URL?
 
-    func package(session: SessionManager, includeExcel: Bool) async {
+    func package(session: SessionManager, includeExcel: Bool, homeCities: Set<String>) async {
         packing = true
         error = nil
         savedURL = nil
@@ -25,7 +25,7 @@ final class PackageViewModel {
             // 1. 物理文件搬到 trips/
             try ZipPackager.arrangeFiles(session: session)
             // 2. 打 ZIP（includeExcel 由勾选框控制）
-            let url = try ZipPackager.package(session: session, includeExcel: includeExcel)
+            let url = try ZipPackager.package(session: session, includeExcel: includeExcel, homeCities: homeCities)
             savedURL = url
         } catch {
             self.error = error.localizedDescription
@@ -78,7 +78,7 @@ struct PackageStep: View {
 
                 if vm.savedURL == nil {
                     Button {
-                        Task { await vm.package(session: state.currentSession!, includeExcel: includeExcel) }
+                        Task { await vm.package(session: state.currentSession!, includeExcel: includeExcel, homeCities: state.settingsStore.settings.homeCities) }
                     } label: {
                         HStack {
                             if vm.packing { ProgressView().scaleEffect(0.5) }
