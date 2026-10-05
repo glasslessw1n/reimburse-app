@@ -267,8 +267,9 @@ enum ExcelBuilder {
             .sorted { Self.firstMMDD($0) < Self.firstMMDD($1) }
         let selfDrive = trip.bills.filter { $0.billType == .selfDriveSheet }
         let hotelFolios = trip.bills.filter { $0.billType == .hotelFolio }
+            .sorted { $0.dateRange.start < $1.dateRange.start }
         let hotelInvoices = trip.bills.filter { $0.billType == .hotelInvoice }
-        let hotels = (hotelFolios + hotelInvoices).sorted { $0.dateRange.start < $1.dateRange.start }
+            .sorted { $0.dateRange.start < $1.dateRange.start }
         let didiTrip = trip.bills.filter { $0.billType == .didiTrip }
         let didiInvoice = trip.bills.filter { $0.billType == .didiInvoice }
         let dining = trip.bills.filter { $0.billType == .dining }
@@ -360,26 +361,32 @@ enum ExcelBuilder {
             totals["交通", default: 0] += sub
         }
 
-        // 2. 酒店
-        if !hotels.isEmpty {
+        // 2. 酒店（水单+发票按金额配对，同一住宿只计一次，避免重复入表）
+        if !hotelFolios.isEmpty || !hotelInvoices.isEmpty {
             var sub: Double = 0
-            for b in hotels {
-                let range = Self.hotelDateRange(b)
-                let city = b.fields["city"]?.flatMap { $0 } ?? b.fields["hotel_name"]?.flatMap { $0 } ?? ""
-                let hasInvoice = (b.billType == .hotelInvoice) ? "✓" : "✗ 缺发票"
-                if b.amount > 0 { sub += b.amount; tripTotal += b.amount }
-                let row = "<row r=\"\(rowIdx)\">"
-                    + Self.makeInlineStringCell(ref: "A\(rowIdx)", value: "酒店住宿", style: 0)
-                    + Self.makeInlineStringCell(ref: "B\(rowIdx)", value: range, style: 5)
-                    + (b.amount > 0
-                        ? Self.makeNumberCell(ref: "C\(rowIdx)", value: b.amount, style: 4)
-                        : Self.makeInlineStringCell(ref: "C\(rowIdx)", value: "?", style: 5))
-                    + Self.makeInlineStringCell(ref: "D\(rowIdx)", value: city, style: 0)
-                    + Self.makeInlineStringCell(ref: "E\(rowIdx)", value: hasInvoice, style: 0)
-                    + "</row>"
-                rows.append(row)
+            var usedInvoices = Set<Int>()
+
+            for folio in hotelFolios {
+                let matchedIdx = hotelInvoices.indices.first { i in
+                    !usedInvoices.contains(i) && abs(hotelInvoices[i].amount - folio.amount) < 0.01
+                }
+                let hasInvoice = matchedIdx != nil
+                if let i = matchedIdx { usedInvoices.insert(i) }
+                let range = Self.hotelDateRange(folio)
+                let city = folio.fields["city"]?.flatMap { $0 } ?? folio.fields["hotel_name"]?.flatMap { $0 } ?? ""
+                if folio.amount > 0 { sub += folio.amount; tripTotal += folio.amount }
+                rows.append(Self.hotelRow(range: range, city: city, amount: folio.amount, hasInvoice: hasInvoice, rowIdx: rowIdx))
                 rowIdx += 1
             }
+            for i in hotelInvoices.indices where !usedInvoices.contains(i) {
+                let inv = hotelInvoices[i]
+                let range = Self.hotelDateRange(inv)
+                let city = inv.fields["city"]?.flatMap { $0 } ?? inv.fields["hotel_name"]?.flatMap { $0 } ?? ""
+                if inv.amount > 0 { sub += inv.amount; tripTotal += inv.amount }
+                rows.append(Self.hotelRow(range: range, city: city, amount: inv.amount, hasInvoice: true, rowIdx: rowIdx))
+                rowIdx += 1
+            }
+
             let subRow = "<row r=\"\(rowIdx)\">"
                 + Self.makeInlineStringCell(ref: "A\(rowIdx)", value: "", style: 0)
                 + Self.makeInlineStringCell(ref: "B\(rowIdx)", value: "酒店小计", style: 6)
@@ -679,6 +686,19 @@ enum ExcelBuilder {
                 : Self.makeInlineStringCell(ref: "C\(rowIdx)", value: "-", style: 5))
             + Self.makeInlineStringCell(ref: "D\(rowIdx)", value: seller, style: 0)
             + Self.makeInlineStringCell(ref: "E\(rowIdx)", value: b.sourceFile, style: 0)
+            + "</row>"
+    }
+
+    /// 酒店住宿一行：金额只计一次（水单+发票配对时归并到同一住宿）
+    private static func hotelRow(range: String, city: String, amount: Double, hasInvoice: Bool, rowIdx: Int) -> String {
+        "<row r=\"\(rowIdx)\">"
+            + Self.makeInlineStringCell(ref: "A\(rowIdx)", value: "酒店住宿", style: 0)
+            + Self.makeInlineStringCell(ref: "B\(rowIdx)", value: range, style: 5)
+            + (amount > 0
+                ? Self.makeNumberCell(ref: "C\(rowIdx)", value: amount, style: 4)
+                : Self.makeInlineStringCell(ref: "C\(rowIdx)", value: "?", style: 5))
+            + Self.makeInlineStringCell(ref: "D\(rowIdx)", value: city, style: 0)
+            + Self.makeInlineStringCell(ref: "E\(rowIdx)", value: hasInvoice ? "✓" : "✗ 缺发票", style: 0)
             + "</row>"
     }
 }

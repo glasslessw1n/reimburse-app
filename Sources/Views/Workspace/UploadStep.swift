@@ -12,6 +12,14 @@
 
 import SwiftUI
 
+/// 票据列表排序/筛选
+enum BillSortMode: String, CaseIterable, Hashable {
+    case original = "默认顺序"
+    case byType = "按类型"
+    case byDate = "按日期"
+    case reviewOnly = "只看需确认"
+}
+
 @MainActor
 @Observable
 final class UploadViewModel {
@@ -114,6 +122,24 @@ struct UploadStep: View {
     @Environment(AppState.self) var state: AppState
     @State private var vm = UploadViewModel()
     @State private var showClearConfirm = false
+    @State private var sortMode: BillSortMode = .original
+
+    /// 根据排序/筛选模式返回要显示的票据
+    private var displayedBills: [BillInfo] {
+        guard let session = state.currentSession else { return [] }
+        var bills = session.manifest.bills
+        switch sortMode {
+        case .original:
+            break
+        case .byType:
+            bills.sort { $0.billType.rawValue < $1.billType.rawValue }
+        case .byDate:
+            bills.sort { ($0.dateMMDDs.first ?? "") < ($1.dateMMDDs.first ?? "") }
+        case .reviewOnly:
+            bills = bills.filter { $0.needsReview }
+        }
+        return bills
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -145,11 +171,16 @@ struct UploadStep: View {
                         .foregroundColor(.secondary)
                     Spacer()
                     if session.manifest.needsReviewCount > 0 {
-                        Label("\(session.manifest.needsReviewCount) 张需确认",
-                              systemImage: "exclamationmark.triangle")
-                            .font(.system(size: 11))
-                            .foregroundColor(.orange)
+                        ReviewBadge(count: session.manifest.needsReviewCount)
                     }
+                    Picker("", selection: $sortMode) {
+                        ForEach(BillSortMode.allCases, id: \.self) { m in
+                            Text(m.rawValue).tag(m)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .fixedSize()
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 8)
@@ -157,7 +188,7 @@ struct UploadStep: View {
                 // 列表（自适应垂直滚动）
                 ScrollView {
                     LazyVStack(spacing: 6) {
-                        ForEach(session.manifest.bills) { bill in
+                        ForEach(displayedBills) { bill in
                             BillRow(bill: bill)
                         }
                     }
@@ -166,17 +197,11 @@ struct UploadStep: View {
                 }
                 .frame(maxHeight: .infinity)
             } else if !vm.processing {
-                // 空状态提示
-                Spacer()
-                VStack(spacing: 8) {
-                    Image(systemName: "doc.text.magnifyingglass")
-                        .font(.system(size: 36))
-                        .foregroundColor(.gray.opacity(0.3))
-                    Text("拖入 PDF 或图片开始识别")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
+                ContentUnavailableView {
+                    Label("拖入 PDF 或图片", systemImage: "doc.text.magnifyingglass")
+                } description: {
+                    Text("支持 PDF / JPG / PNG，一次可拖多张")
                 }
-                Spacer()
             } else {
                 Spacer()
             }
@@ -201,7 +226,7 @@ struct UploadStep: View {
                     Text("下一步：整理 →")
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Color(red: 0.98, green: 0.36, blue: 0.10))
+                .tint(.brandOrange)
                 .disabled(state.currentSession?.manifest.bills.isEmpty ?? true || vm.processing)
             }
             .padding(.horizontal, 24)

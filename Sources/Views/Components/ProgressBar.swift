@@ -27,7 +27,7 @@ struct ProgressBar: View {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Color.gray.opacity(0.15))
                     RoundedRectangle(cornerRadius: 3)
-                        .fill(Color(red: 0.98, green: 0.36, blue: 0.10))
+                        .fill(Color.brandOrange)
                         .frame(width: max(2, geo.size.width * value))
                         .animation(.easeInOut(duration: 0.15), value: value)
                 }

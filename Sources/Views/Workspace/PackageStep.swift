@@ -86,7 +86,7 @@ struct PackageStep: View {
                         .frame(minWidth: 140)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(Color(red: 0.98, green: 0.36, blue: 0.10))
+                    .tint(.brandOrange)
                     .disabled(state.currentSession?.manifest.bills.isEmpty ?? true || vm.packing)
                 } else {
                     Button("再来一次") {
@@ -94,7 +94,7 @@ struct PackageStep: View {
                         state.page = .home
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(Color(red: 0.98, green: 0.36, blue: 0.10))
+                    .tint(.brandOrange)
                 }
             }
             .padding(.horizontal, 24)
@@ -165,7 +165,7 @@ struct PackageStep: View {
                         .frame(minWidth: 160)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Color(red: 0.98, green: 0.36, blue: 0.10))
+                .tint(.brandOrange)
                 .padding(.top, 12)
             }
         }

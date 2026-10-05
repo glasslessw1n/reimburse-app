@@ -66,7 +66,7 @@ struct FinalizeStep: View {
                     state.advance(to: .package)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Color(red: 0.98, green: 0.36, blue: 0.10))
+                .tint(.brandOrange)
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
@@ -74,22 +74,18 @@ struct FinalizeStep: View {
     }
 
     private var emptyHint: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "folder.badge.questionmark")
-                .font(.system(size: 36))
-                .foregroundColor(.gray.opacity(0.3))
-            Text("暂无可归类的票据")
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
+        ContentUnavailableView {
+            Label("暂无可归类的票据", systemImage: "folder.badge.questionmark")
+        } description: {
+            Text("回到上传步骤补充票据")
         }
-        .padding(.vertical, 60)
     }
 }
 
 /// 单个行程卡片（对应 web 版的 trip card）
 private struct TripCard: View {
     let trip: TripGroup
-    @State private var expanded = true
+    @State private var expanded = false
 
     private var totalAmount: Double {
         trip.bills.reduce(0) { $0 + $1.amount }
@@ -108,6 +104,24 @@ private struct TripCard: View {
                 if acc.last != c { acc.append(c) }
             }
             .joined(separator: " ")
+    }
+
+    /// 未配对到发票的酒店水单数量（金额匹配）
+    private var missingInvoiceCount: Int {
+        let folios = trip.bills.filter { $0.billType == .hotelFolio }
+        let invoices = trip.bills.filter { $0.billType == .hotelInvoice }
+        var used = Set<Int>()
+        var missing = 0
+        for folio in folios {
+            if let idx = invoices.indices.first(where: { i in
+                !used.contains(i) && abs(invoices[i].amount - folio.amount) < 0.01
+            }) {
+                used.insert(idx)
+            } else {
+                missing += 1
+            }
+        }
+        return missing
     }
 
     var body: some View {
@@ -133,13 +147,18 @@ private struct TripCard: View {
                         Text("¥")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
-                        Text(String(format: "%.2f", totalAmount))
-                            .font(.system(size: 22, weight: .semibold).monospacedDigit())
+                        AnimatedNumber(value: totalAmount)
+                            .font(.system(size: 22, weight: .semibold))
                             .foregroundColor(.primary)
                     }
                     Text("\(trip.bills.count) 张")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
+                    if missingInvoiceCount > 0 {
+                        Label("\(missingInvoiceCount) 段缺发票", systemImage: "exclamationmark.triangle")
+                            .font(.system(size: 10))
+                            .foregroundColor(.orange)
+                    }
                 }
                 Image(systemName: expanded ? "chevron.up" : "chevron.down")
                     .font(.system(size: 11))
@@ -177,7 +196,7 @@ private struct TripCard: View {
 /// 本地卡片
 private struct LocalCard: View {
     let bills: [BillInfo]
-    @State private var expanded = true
+    @State private var expanded = false
 
     private var totalAmount: Double {
         bills.reduce(0) { $0 + $1.amount }
@@ -199,8 +218,8 @@ private struct LocalCard: View {
                         Text("¥")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
-                        Text(String(format: "%.2f", totalAmount))
-                            .font(.system(size: 22, weight: .semibold).monospacedDigit())
+                        AnimatedNumber(value: totalAmount)
+                            .font(.system(size: 22, weight: .semibold))
                     }
                     Text("\(bills.count) 张")
                         .font(.system(size: 11))

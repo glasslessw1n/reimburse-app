@@ -35,7 +35,7 @@ struct HomeView: View {
                             +
                             Text("发票")
                                 .font(.system(size: 56, weight: .bold))
-                                .foregroundColor(Color(red: 0.98, green: 0.36, blue: 0.10))
+                                .foregroundColor(.brandOrange)
                             +
                             Text("变成")
                                 .font(.system(size: 56, weight: .bold))
@@ -43,7 +43,7 @@ struct HomeView: View {
                             +
                             Text("\n结构化数据")
                                 .font(.system(size: 56, weight: .bold))
-                                .foregroundColor(Color(red: 0.98, green: 0.36, blue: 0.10))
+                                .foregroundColor(.brandOrange)
                         )
 
                         Text("上传票据，LLM 自动识别票据类型、抽取关键字段、关联水单发票、按行程归档。一键生成报销明细。")
@@ -51,6 +51,38 @@ struct HomeView: View {
                             .foregroundColor(.secondary)
                             .frame(maxWidth: 460, alignment: .leading)
                             .padding(.top, 12)
+                    }
+
+                    // 未配置 LLM 时引导用户先配置
+                    if !state.llmConfigured {
+                        HStack(spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                                .font(.system(size: 16))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("尚未配置 LLM")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text("配置后才能自动识别票据类型和字段")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Button("去配置") {
+                                state.showSettings = true
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.brandOrange)
+                        }
+                        .padding(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.orange.opacity(0.08))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.orange.opacity(0.25), lineWidth: 0.5)
+                        )
+                        .frame(maxWidth: 460)
                     }
 
                     Button {
@@ -63,7 +95,7 @@ struct HomeView: View {
                             .padding(.vertical, 14)
                             .background(
                                 RoundedRectangle(cornerRadius: 10)
-                                    .fill(Color(red: 0.98, green: 0.36, blue: 0.10))
+                                    .fill(Color.brandOrange)
                             )
                     }
                     .buttonStyle(.plain)
@@ -90,7 +122,7 @@ private struct HowToCard: View {
             HStack(spacing: 8) {
                 ZStack {
                     Circle()
-                        .fill(Color(red: 0.98, green: 0.36, blue: 0.10))
+                        .fill(Color.brandOrange)
                         .frame(width: 22, height: 22)
                     Text("i")
                         .font(.system(size: 13, weight: .bold, design: .serif))
@@ -128,11 +160,11 @@ private struct HowToRow: View {
         HStack(alignment: .top, spacing: 10) {
             ZStack {
                 Circle()
-                    .fill(Color(red: 0.98, green: 0.36, blue: 0.10).opacity(0.12))
+                    .fill(Color.brandOrange.opacity(0.12))
                     .frame(width: 22, height: 22)
                 Text(num)
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(Color(red: 0.98, green: 0.36, blue: 0.10))
+                    .foregroundColor(.brandOrange)
             }
             VStack(alignment: .leading, spacing: 2) {
                 // 高亮粗体的"动作短语"

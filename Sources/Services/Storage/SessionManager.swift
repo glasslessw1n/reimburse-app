@@ -211,8 +211,7 @@ final class SessionManager {
             guard inv.amount > 0 else { continue }
             for fIdx in folioIdxs where !usedFolios.contains(fIdx) {
                 guard bills[fIdx].amount > 0 else { continue }
-                if abs(inv.amount - bills[fIdx].amount) < 0.01,
-                   Self.hotelNameCompatible(inv, bills[fIdx]) {
+                if abs(inv.amount - bills[fIdx].amount) < 0.01 {
                     enrich(invoice: &inv, folio: &bills[fIdx])
                     bills[iIdx] = inv  // 写回
                     usedFolios.insert(fIdx)
@@ -220,22 +219,6 @@ final class SessionManager {
                 }
             }
         }
-    }
-
-    /// 金额相等后，再用酒店名/销方名做一层相关性校验，避免「餐饮发票恰好同金额」被误配成酒店
-    private static func hotelNameCompatible(_ invoice: BillInfo, _ folio: BillInfo) -> Bool {
-        let fName = (folio.fields["hotel_name"]?.flatMap { $0 } ?? "")
-            .trimmingCharacters(in: .whitespaces).lowercased()
-        let iName = (invoice.fields["seller_name"]?.flatMap { $0 }
-                     ?? invoice.fields["hotel_name"]?.flatMap { $0 }
-                     ?? "")
-            .trimmingCharacters(in: .whitespaces).lowercased()
-        // 任一方没有名称可比较 → 只能按金额，放行
-        if fName.isEmpty || iName.isEmpty { return true }
-        // 包含关系最可靠（"亚朵酒店" vs "上海亚朵酒店管理有限公司"）
-        if fName.contains(iName) || iName.contains(fName) { return true }
-        // 字符级相似度兜底
-        return simpleSimilarity(fName, iName) > 0.2
     }
 
     /// 发票缺失字段用水单回填（不覆盖已有值）+ 日期偏移检测

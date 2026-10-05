@@ -25,6 +25,18 @@ struct ReimbursementNativeApp: App {
                     NSApplication.shared.orderFrontStandardAboutPanel(nil)
                 }
             }
+            CommandGroup(replacing: .newItem) {
+                Button("新建整理") {
+                    state.startNewSession()
+                }
+                .keyboardShortcut("n", modifiers: [.command])
+            }
+            CommandGroup(replacing: .appSettings) {
+                Button("LLM 设置…") {
+                    state.showSettings = true
+                }
+                .keyboardShortcut(",", modifiers: [.command])
+            }
             CommandGroup(replacing: .appTermination) {
                 Button("退出 报销整理") {
                     NSApplication.shared.terminate(nil)

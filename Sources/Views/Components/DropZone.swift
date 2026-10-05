@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import Synchronization
 
 struct DropZone: View {
     @Binding var isTargeted: Bool
@@ -19,12 +20,12 @@ struct DropZone: View {
                     style: StrokeStyle(lineWidth: 2, dash: [8, 6])
                 )
                 .foregroundColor(isTargeted
-                    ? Color(red: 0.98, green: 0.36, blue: 0.10)
+                    ? .brandOrange
                     : Color.gray.opacity(0.3))
                 .background(
                     RoundedRectangle(cornerRadius: 12)
                         .fill(isTargeted
-                              ? Color(red: 0.98, green: 0.36, blue: 0.10).opacity(0.06)
+                              ? .brandOrange.opacity(0.06)
                               : Color.gray.opacity(0.03))
                 )
 
@@ -32,7 +33,7 @@ struct DropZone: View {
                 Image(systemName: "tray.and.arrow.down")
                     .font(.system(size: 36))
                     .foregroundColor(.gray.opacity(0.6))
-                Text("把发票拖进来")
+                Text("把发票、单据拖进来")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.primary)
                 Text("支持 PDF / JPG / PNG · 一次可拖多张")
@@ -50,19 +51,18 @@ struct DropZone: View {
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
-        var collected: [URL] = []
+        let collected = Mutex<[URL]>([])
         let group = DispatchGroup()
-        let lock = NSLock()
         for p in providers {
             group.enter()
             _ = p.loadObject(ofClass: URL.self) { url, _ in
                 defer { group.leave() }
                 guard let url = url else { return }
-                lock.lock(); collected.append(url); lock.unlock()
+                collected.withLock { $0.append(url) }
             }
         }
         group.notify(queue: .main) {
-            let filtered = collected.filter { isSupported($0) }
+            let filtered = collected.withLock { $0 }.filter { isSupported($0) }
             if !filtered.isEmpty { onFiles(filtered) }
         }
         return true

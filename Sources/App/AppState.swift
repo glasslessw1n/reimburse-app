@@ -45,6 +45,9 @@ final class AppState {
     /// 当前 session
     var currentSession: SessionManager?
 
+    /// 是否弹出设置面板（供首页引导、状态徽章、⌘, 快捷键共用）
+    var showSettings = false
+
     /// 全局设置
     let settingsStore = LLMSettingsStore()
 

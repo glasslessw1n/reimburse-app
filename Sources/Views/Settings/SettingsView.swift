@@ -227,7 +227,7 @@ struct SettingsView: View {
                                 .frame(minWidth: 80)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(Color(red: 0.98, green: 0.36, blue: 0.10))
+                        .tint(.brandOrange)
                     }
                     .padding(.top, 8)
                 }

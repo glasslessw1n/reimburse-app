@@ -10,6 +10,7 @@ import SwiftUI
 struct BillRow: View {
     let bill: BillInfo
     @State private var expanded = false
+    @State private var isHovering = false
 
     /// 颜色对应 web 版 .transport / .ride / .hotel / .invoice / .fuel / .misc / .other
     var typeColor: Color {
@@ -124,10 +125,12 @@ struct BillRow: View {
                     .background(Color.gray.opacity(0.03))
             }
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(isHovering ? Color.gray.opacity(0.12) : Color(nsColor: .controlBackgroundColor))
+        .onHover { isHovering = $0 }
+        .animation(.easeInOut(duration: 0.12), value: isHovering)
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)
+                .stroke(isHovering ? Color.gray.opacity(0.35) : Color.gray.opacity(0.15), lineWidth: 0.5)
         )
     }
 

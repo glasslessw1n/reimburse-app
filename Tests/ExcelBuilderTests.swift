@@ -35,4 +35,21 @@ struct ExcelBuilderTests {
         #expect(xml.contains("加油.pdf"), "加油票不应被漏掉")
         #expect(xml.contains("通行费.pdf"), "通行费不应被漏掉")
     }
+
+    @Test func hotelFolioAndInvoiceCountedOnce() {
+        // 水单+发票同金额 → 同一住宿只计一次，不能重复入表
+        let bills: [BillInfo] = [
+            BillInfo(billType: .trainTicket, amount: 553, sourceFile: "火车票.pdf",
+                     fields: ["departure_date": "2026-09-10", "origin_city": "重庆", "destination_city": "厦门"]),
+            BillInfo(billType: .hotelFolio, amount: 1200, sourceFile: "水单.pdf",
+                     fields: ["check_in_date": "2026-09-10", "check_out_date": "2026-09-12", "city": "厦门", "hotel_name": "厦门酒店"]),
+            BillInfo(billType: .hotelInvoice, amount: 1200, sourceFile: "发票.pdf",
+                     fields: ["issue_date": "2026-09-12", "seller_name": "厦门酒店"]),
+        ]
+        let xml = ExcelBuilder.buildSheet(bills: bills, homeCities: ["重庆"])
+        let hotelCount = xml.components(separatedBy: "酒店住宿").count - 1
+        #expect(hotelCount == 1, "水单+发票应归并为一行，实际 \(hotelCount) 行")
+        #expect(xml.contains("1753.00"), "总计应为 553 + 1200 = 1753")
+        #expect(!xml.contains("2953.00"), "不应重复计入酒店金额")
+    }
 }

@@ -9,7 +9,6 @@ import SwiftUI
 
 struct StatusBadges: View {
     @Environment(AppState.self) var state: AppState
-    @State private var showSettings = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -17,16 +16,12 @@ struct StatusBadges: View {
 
             // LLM 徽章可点击 → 打开 Settings
             Button {
-                showSettings = true
+                state.showSettings = true
             } label: {
                 Badge(label: "LLM", ok: state.llmConfigured && state.llmAvailable)
             }
             .buttonStyle(.plain)
             .help("点击配置 LLM")
-        }
-        .sheet(isPresented: $showSettings) {
-            SettingsView()
-                .environment(state)
         }
     }
 }

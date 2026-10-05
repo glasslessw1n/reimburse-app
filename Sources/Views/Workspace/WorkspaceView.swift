@@ -98,13 +98,14 @@ private struct StepIndicator: View {
                             if isReached(step) {
                                 Image(systemName: "checkmark")
                                     .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(Color(red: 0.98, green: 0.36, blue: 0.10))
+                                    .foregroundColor(.brandOrange)
                             } else {
                                 Text("\(i + 1)")
                                     .font(.system(size: 11, weight: .bold))
                                     .foregroundColor(isCurrent(step) ? .white : .secondary)
                             }
                         }
+                        .scaleEffect(isCurrent(step) ? 1.12 : 1.0)
                         Text(step.title)
                             .font(.system(size: 12, weight: isCurrent(step) ? .semibold : .regular))
                             .foregroundColor(textColor(step))
@@ -116,28 +117,29 @@ private struct StepIndicator: View {
 
                 if i < displaySteps.count - 1 {
                     Rectangle()
-                        .fill(isReached(step) ? Color(red: 0.98, green: 0.36, blue: 0.10).opacity(0.4) : Color.gray.opacity(0.2))
+                        .fill(isReached(step) ? .brandOrange.opacity(0.4) : Color.gray.opacity(0.2))
                         .frame(height: 1)
                         .padding(.horizontal, 8)
                 }
             }
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: current)
     }
 
     private func circleFill(_ step: WorkspaceStep) -> Color {
-        if isCurrent(step) { return Color(red: 0.98, green: 0.36, blue: 0.10) }
-        if isReached(step) { return Color(red: 0.98, green: 0.36, blue: 0.10).opacity(0.12) }
+        if isCurrent(step) { return .brandOrange }
+        if isReached(step) { return .brandOrange.opacity(0.12) }
         return Color.gray.opacity(0.2)
     }
 
     private func circleStroke(_ step: WorkspaceStep) -> Color {
-        if isReached(step) { return Color(red: 0.98, green: 0.36, blue: 0.10).opacity(0.5) }
+        if isReached(step) { return .brandOrange.opacity(0.5) }
         return .clear
     }
 
     private func textColor(_ step: WorkspaceStep) -> Color {
         if isCurrent(step) { return .primary }
-        if isReached(step) { return Color(red: 0.98, green: 0.36, blue: 0.10) }
+        if isReached(step) { return .brandOrange }
         return .secondary
     }
 }
