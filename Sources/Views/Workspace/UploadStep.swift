@@ -227,6 +227,7 @@ struct UploadStep: View {
                 } description: {
                     Text("支持 PDF / JPG / PNG，一次可拖多张")
                 }
+                .frame(maxHeight: .infinity)
             } else {
                 Spacer()
             }
