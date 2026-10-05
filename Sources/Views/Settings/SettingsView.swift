@@ -157,6 +157,7 @@ struct SettingsView: View {
                             }
                         }
                         .buttonStyle(.bordered)
+                        .hoverScale()
                         .disabled(apiKey.isEmpty || baseURL.isEmpty || isFetchingModels)
                     }
 
@@ -216,6 +217,7 @@ struct SettingsView: View {
                             .frame(minWidth: 100)
                         }
                         .buttonStyle(.bordered)
+                        .hoverScale()
                         .disabled(apiKey.isEmpty || baseURL.isEmpty || isTesting)
 
                         Spacer()
@@ -228,6 +230,7 @@ struct SettingsView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.brandOrange)
+                        .hoverScale()
                     }
                     .padding(.top, 8)
                 }

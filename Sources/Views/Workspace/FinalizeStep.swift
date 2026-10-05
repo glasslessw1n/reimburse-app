@@ -26,6 +26,7 @@ struct FinalizeStep: View {
                     state.advance(to: .upload)
                 }
                 .buttonStyle(.bordered)
+                .hoverScale()
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
@@ -59,6 +60,7 @@ struct FinalizeStep: View {
                     state.advance(to: .upload)
                 }
                 .buttonStyle(.bordered)
+                .hoverScale()
 
                 Spacer()
 
@@ -67,6 +69,7 @@ struct FinalizeStep: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.brandOrange)
+                .hoverScale()
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
@@ -182,10 +185,7 @@ private struct TripCard: View {
                 .padding(.vertical, 8)
             }
         }
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
+        .background { VisualEffectView().clipShape(RoundedRectangle(cornerRadius: 10)).allowsHitTesting(false) }
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)
@@ -246,10 +246,7 @@ private struct LocalCard: View {
                 .padding(.vertical, 8)
             }
         }
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
+        .background { VisualEffectView().clipShape(RoundedRectangle(cornerRadius: 10)).allowsHitTesting(false) }
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)

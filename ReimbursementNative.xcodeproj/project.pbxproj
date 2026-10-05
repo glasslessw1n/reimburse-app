@@ -14,6 +14,7 @@
 		1115B8D98ECB6E341B4A820D /* StatusBadges.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7800FD4AE526B046342036F5 /* StatusBadges.swift */; };
 		1158E28CF6870843DB75B0A0 /* ReceiptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE138A771596FB5EFBB562A4 /* ReceiptTests.swift */; };
 		1B84D0137052AC56FE338D11 /* ReviewBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30ACEC1D9FD380D70D9D9666 /* ReviewBadge.swift */; };
+		1CD76F6C3832D15003FDC33F /* background.png in CopyFiles */ = {isa = PBXBuildFile; fileRef = EFD53FDEA295CD085D43D37A /* background.png */; };
 		1D444EECF00BBCE865EA6197 /* TripResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07E881E9DD94F0C57860F11E /* TripResolverTests.swift */; };
 		1D85384536E5B7296A42F92C /* AnyJSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = B004F72802FC0388285B431B /* AnyJSONValue.swift */; };
 		20F9FACDA0A39FFCF4D03369 /* ExcelBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E745139085C8187361C6A27C /* ExcelBuilderTests.swift */; };
@@ -42,6 +43,7 @@
 		A2B070CFD4DF9A3CBDACCC86 /* LLMPrompts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6475F74DA33814085DB30B15 /* LLMPrompts.swift */; };
 		A3836FD5AE2117684BD51E45 /* LLMProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68895619B10A9EF50CF20F86 /* LLMProvider.swift */; };
 		A4EDEDEB8F203B61A1E857B6 /* AppIcon.icns in CopyFiles */ = {isa = PBXBuildFile; fileRef = 83DE5B1CE51AD57D1B782ED9 /* AppIcon.icns */; };
+		ABC63ACA7259EF52737162A3 /* VisualEffectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32CE3DAAEA1444AF87EE00D6 /* VisualEffectView.swift */; };
 		B29DADB7697ACD0A43BC5280 /* BillType.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAC25B24004A13BD6E5F5E04 /* BillType.swift */; };
 		C1BE3F09C787FF58E881F443 /* PDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF3A47195C8530D2CBCB0C0B /* PDFRenderer.swift */; };
 		C2B4AD562F10AE6292AC3FDD /* LLMClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97E8C8561D72EA8F12EAB735 /* LLMClient.swift */; };
@@ -73,6 +75,7 @@
 			dstSubfolderSpec = 7;
 			files = (
 				A4EDEDEB8F203B61A1E857B6 /* AppIcon.icns in CopyFiles */,
+				1CD76F6C3832D15003FDC33F /* background.png in CopyFiles */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -85,6 +88,7 @@
 		0B632D5CDA10D1993B2536C3 /* SessionManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionManagerTests.swift; sourceTree = "<group>"; };
 		278CCC82199CB227063EDC5C /* ProgressBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressBar.swift; sourceTree = "<group>"; };
 		30ACEC1D9FD380D70D9D9666 /* ReviewBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewBadge.swift; sourceTree = "<group>"; };
+		32CE3DAAEA1444AF87EE00D6 /* VisualEffectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualEffectView.swift; sourceTree = "<group>"; };
 		335D178B4589F0B6F120B823 /* PopUpButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopUpButton.swift; sourceTree = "<group>"; };
 		359790A9A1DFFD1BD0A39FCD /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
 		3F43B358FD0D9CB08C1B45A9 /* ZipPackager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipPackager.swift; sourceTree = "<group>"; };
@@ -119,6 +123,7 @@
 		E45B0077F91547E7FF6454F1 /* LLMRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMRecognizer.swift; sourceTree = "<group>"; };
 		E53C8203E0BC387F035D3A18 /* UploadStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadStep.swift; sourceTree = "<group>"; };
 		E745139085C8187361C6A27C /* ExcelBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExcelBuilderTests.swift; sourceTree = "<group>"; };
+		EFD53FDEA295CD085D43D37A /* background.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = background.png; sourceTree = "<group>"; };
 		F0D2B5CCB84D4D81427F4DC9 /* AnimatedNumber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimatedNumber.swift; sourceTree = "<group>"; };
 		F15040540CFF802605FED89C /* UniformTypeIdentifiers.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UniformTypeIdentifiers.framework; path = System/Library/Frameworks/UniformTypeIdentifiers.framework; sourceTree = SDKROOT; };
 		F306C54DDB21A4DF1B289C2E /* ReimbursementNative.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ReimbursementNative.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -275,6 +280,7 @@
 			isa = PBXGroup;
 			children = (
 				83DE5B1CE51AD57D1B782ED9 /* AppIcon.icns */,
+				EFD53FDEA295CD085D43D37A /* background.png */,
 			);
 			path = BuildAssets;
 			sourceTree = "<group>";
@@ -308,6 +314,7 @@
 				278CCC82199CB227063EDC5C /* ProgressBar.swift */,
 				30ACEC1D9FD380D70D9D9666 /* ReviewBadge.swift */,
 				7800FD4AE526B046342036F5 /* StatusBadges.swift */,
+				32CE3DAAEA1444AF87EE00D6 /* VisualEffectView.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -460,6 +467,7 @@
 				0FE8EA81E405EB58C00AFB96 /* Theme.swift in Sources */,
 				4E1D2FEE5B1256174AF82F4F /* TripResolver.swift in Sources */,
 				C8BA997C0BEB3757B92AE6BA /* UploadStep.swift in Sources */,
+				ABC63ACA7259EF52737162A3 /* VisualEffectView.swift in Sources */,
 				0329F39923DAFEF5302E8BD5 /* WorkspaceView.swift in Sources */,
 				4E545D1B84B0DEEEE980C1E5 /* ZipPackager.swift in Sources */,
 			);

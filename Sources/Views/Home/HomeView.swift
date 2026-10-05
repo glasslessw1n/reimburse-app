@@ -99,7 +99,9 @@ struct HomeView: View {
                             )
                     }
                     .buttonStyle(.plain)
+                    .shadow(color: Color.brandOrange.opacity(0.35), radius: 10, y: 3)
                     .padding(.top, 8)
+                    .hoverScale(1.05)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -141,14 +143,13 @@ private struct HowToCard: View {
             }
         }
         .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
+        .background { VisualEffectView().clipShape(RoundedRectangle(cornerRadius: 12)).allowsHitTesting(false) }
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)
         )
+        .shadow(color: Color.black.opacity(0.14), radius: 18, y: 6)
+        .hoverScale(1.02)
     }
 }
 

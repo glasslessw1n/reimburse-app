@@ -67,7 +67,7 @@ struct PopUpButton<Item: Hashable & Equatable, ItemLabel: View>: NSViewRepresent
         let parent: PopUpButton
         init(_ parent: PopUpButton) { self.parent = parent }
 
-        @objc func changed(_ sender: NSPopUpButton) {
+        @MainActor @objc func changed(_ sender: NSPopUpButton) {
             let idx = sender.indexOfSelectedItem
             guard idx >= 0, idx < parent.items.count else { return }
             parent.selection = parent.items[idx]
@@ -119,7 +119,7 @@ struct PopUpButtonWithLabel<Item: Hashable & Equatable>: NSViewRepresentable {
         let parent: PopUpButtonWithLabel
         init(_ parent: PopUpButtonWithLabel) { self.parent = parent }
 
-        @objc func changed(_ sender: NSPopUpButton) {
+        @MainActor @objc func changed(_ sender: NSPopUpButton) {
             let idx = sender.indexOfSelectedItem
             guard idx >= 0, idx < parent.entries.count else { return }
             parent.selection = parent.entries[idx].0

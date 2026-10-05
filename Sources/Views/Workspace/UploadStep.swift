@@ -214,6 +214,7 @@ struct UploadStep: View {
                     showClearConfirm = true
                 }
                 .buttonStyle(.bordered)
+                .hoverScale()
                 .disabled(state.currentSession?.manifest.bills.isEmpty ?? true)
 
                 Spacer()
@@ -227,6 +228,7 @@ struct UploadStep: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.brandOrange)
+                .hoverScale()
                 .disabled(state.currentSession?.manifest.bills.isEmpty ?? true || vm.processing)
             }
             .padding(.horizontal, 24)
@@ -280,10 +282,7 @@ struct UploadStep: View {
             }
         }
         .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.gray.opacity(0.06))
-        )
+        .background { VisualEffectView().clipShape(RoundedRectangle(cornerRadius: 8)).allowsHitTesting(false) }
         .overlay(
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)

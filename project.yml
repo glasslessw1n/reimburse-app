@@ -35,6 +35,12 @@ targets:
           copyFiles:
             destination: resources
 
+      # 品牌背景图（去橙框的发票堆叠）→ Contents/Resources
+      - path: BuildAssets/background.png
+        buildPhase:
+          copyFiles:
+            destination: resources
+
     settings:
       base:
         GENERATE_INFOPLIST_FILE: "NO"

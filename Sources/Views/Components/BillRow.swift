@@ -125,12 +125,18 @@ struct BillRow: View {
                     .background(Color.gray.opacity(0.03))
             }
         }
-        .background(isHovering ? Color.gray.opacity(0.12) : Color(nsColor: .controlBackgroundColor))
+        .background { VisualEffectView().clipShape(RoundedRectangle(cornerRadius: 6)).allowsHitTesting(false) }
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isHovering ? Color.gray.opacity(0.12) : Color.clear)
+                .allowsHitTesting(false)
+        )
         .onHover { isHovering = $0 }
         .animation(.easeInOut(duration: 0.12), value: isHovering)
         .overlay(
             RoundedRectangle(cornerRadius: 6)
                 .stroke(isHovering ? Color.gray.opacity(0.35) : Color.gray.opacity(0.15), lineWidth: 0.5)
+                .allowsHitTesting(false)
         )
     }
 

@@ -71,6 +71,7 @@ struct PackageStep: View {
                     state.advance(to: .finalize)
                 }
                 .buttonStyle(.bordered)
+                .hoverScale()
                 .disabled(vm.packing)
 
                 Spacer()
@@ -87,6 +88,7 @@ struct PackageStep: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.brandOrange)
+                    .hoverScale()
                     .disabled(state.currentSession?.manifest.bills.isEmpty ?? true || vm.packing)
                 } else {
                     Button("再来一次") {
@@ -95,6 +97,7 @@ struct PackageStep: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.brandOrange)
+                    .hoverScale()
                 }
             }
             .padding(.horizontal, 24)
@@ -152,6 +155,7 @@ struct PackageStep: View {
                                 .font(.system(size: 13))
                         }
                         .buttonStyle(.bordered)
+                        .hoverScale()
                         .help("复制路径")
                     }
                 }
@@ -166,6 +170,7 @@ struct PackageStep: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.brandOrange)
+                .hoverScale()
                 .padding(.top, 12)
             }
         }
