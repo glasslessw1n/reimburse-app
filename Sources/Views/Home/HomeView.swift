@@ -70,8 +70,7 @@ struct HomeView: View {
                             Button("去配置") {
                                 state.showSettings = true
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.brandOrange)
+                            .primaryAction()
                         }
                         .padding(12)
                         .background(
@@ -90,31 +89,27 @@ struct HomeView: View {
                     } label: {
                         Text("开始整理 →")
                             .font(.system(size: 15, weight: .semibold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 2)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .tint(.brandOrange)
+                    .primaryAction()
                     .keyboardShortcut(.defaultAction)
                     .padding(.top, 8)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                // 右：操作指引
-                HowToCard()
-                    .frame(maxWidth: 460, alignment: .trailing)
+                // 右：操作指引 + 最近会话（信息栏，两个卡片同风格）
+                VStack(alignment: .leading, spacing: 16) {
+                    HowToCard()
+                    if !state.sessions.isEmpty {
+                        RecentSessionsSection(sessions: state.sessions) { sid in
+                            state.resumeSession(sid: sid)
+                        }
+                    }
+                }
+                .frame(width: 460, alignment: .leading)
             }
             .padding(.horizontal, 48)
-
-            // 最近会话（有历史时显示）
-            if !state.sessions.isEmpty {
-                RecentSessionsSection(sessions: state.sessions) { sid in
-                    state.resumeSession(sid: sid)
-                }
-                .padding(.horizontal, 48)
-                .padding(.top, 28)
-            }
 
             Spacer()
         }
@@ -123,21 +118,30 @@ struct HomeView: View {
     }
 }
 
-/// 首页「最近会话」列表
+/// 首页「最近会话」卡片（右侧信息栏，与操作指引同风格）
 private struct RecentSessionsSection: View {
     let sessions: [SessionSummary]
     let onResume: (String) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             Text("最近会话")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.secondary)
-            ForEach(sessions.prefix(5)) { s in
+                .padding(.bottom, 6)
+
+            ForEach(sessions.prefix(4)) { s in
                 SessionRow(summary: s) { onResume(s.sid) }
             }
         }
-        .frame(maxWidth: 560, alignment: .leading)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background { VisualEffectView().clipShape(RoundedRectangle(cornerRadius: 12)).allowsHitTesting(false) }
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)
+        )
+        .shadow(color: Color.black.opacity(0.14), radius: 18, y: 6)
     }
 }
 
@@ -148,28 +152,26 @@ private struct SessionRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 13))
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("\(summary.billCount) 张票据 · \(summary.tripCount) 个行程")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.primary)
-                    Text(summary.createdLabel)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
+                Text("\(summary.billCount) 张 · \(summary.tripCount) 行程")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10))
+                Text(summary.createdLabel)
+                    .font(.system(size: 11).monospacedDigit())
                     .foregroundStyle(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
             .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(hovering ? Color.gray.opacity(0.10) : Color.gray.opacity(0.05))
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(hovering ? Color.gray.opacity(0.10) : Color.gray.opacity(0.045))
             )
             .contentShape(Rectangle())
         }
@@ -204,13 +206,13 @@ private struct HowToCard: View {
             }
         }
         .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background { VisualEffectView().clipShape(RoundedRectangle(cornerRadius: 12)).allowsHitTesting(false) }
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)
         )
         .shadow(color: Color.black.opacity(0.14), radius: 18, y: 6)
-        .hoverScale(1.02)
     }
 }
 

@@ -26,7 +26,6 @@ struct FinalizeStep: View {
                     state.advance(to: .upload)
                 }
                 .buttonStyle(.bordered)
-                .hoverScale()
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
@@ -60,16 +59,13 @@ struct FinalizeStep: View {
                     state.advance(to: .upload)
                 }
                 .buttonStyle(.bordered)
-                .hoverScale()
 
                 Spacer()
 
                 Button("下一步：打包 →") {
                     state.advance(to: .package)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.brandOrange)
-                .hoverScale()
+                .primaryAction()
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 12)

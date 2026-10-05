@@ -204,8 +204,7 @@ struct SettingsView: View {
                         Text(showSavedTip ? "✓ 已保存" : "保存")
                             .frame(minWidth: 76)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.brandOrange)
+                    .primaryAction()
                 }
             }
             .padding(.horizontal, 20)

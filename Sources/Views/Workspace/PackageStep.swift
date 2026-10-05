@@ -71,7 +71,6 @@ struct PackageStep: View {
                     state.advance(to: .finalize)
                 }
                 .buttonStyle(.bordered)
-                .hoverScale()
                 .disabled(vm.packing)
 
                 Spacer()
@@ -86,18 +85,14 @@ struct PackageStep: View {
                         }
                         .frame(minWidth: 140)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.brandOrange)
-                    .hoverScale()
+                    .primaryAction()
                     .disabled(state.currentSession?.manifest.bills.isEmpty ?? true || vm.packing)
                 } else {
                     Button("再来一次") {
                         state.clearCurrentSession()
                         state.page = .home
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.brandOrange)
-                    .hoverScale()
+                    .primaryAction()
                 }
             }
             .padding(.horizontal, 24)
@@ -155,7 +150,6 @@ struct PackageStep: View {
                                 .font(.system(size: 13))
                         }
                         .buttonStyle(.bordered)
-                        .hoverScale()
                         .help("复制路径")
                     }
                 }
@@ -168,9 +162,7 @@ struct PackageStep: View {
                     Label("在 Finder 中显示", systemImage: "folder")
                         .frame(minWidth: 160)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.brandOrange)
-                .hoverScale()
+                .primaryAction()
                 .padding(.top, 12)
             }
         }

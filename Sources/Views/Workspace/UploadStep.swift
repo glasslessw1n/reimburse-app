@@ -241,7 +241,6 @@ struct UploadStep: View {
                     showClearConfirm = true
                 }
                 .buttonStyle(.bordered)
-                .hoverScale()
                 .disabled(state.currentSession?.manifest.bills.isEmpty ?? true)
 
                 Spacer()
@@ -253,9 +252,7 @@ struct UploadStep: View {
                 } label: {
                     Text("下一步：整理 →")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.brandOrange)
-                .hoverScale()
+                .primaryAction()
                 .disabled(state.currentSession?.manifest.bills.isEmpty ?? true || vm.processing)
             }
             .padding(.horizontal, 24)
