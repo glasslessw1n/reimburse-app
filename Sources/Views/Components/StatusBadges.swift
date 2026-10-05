@@ -41,8 +41,6 @@ private struct StatusIcon: View {
                 .fill(ok ? Color.green : Color.gray.opacity(0.4))
                 .frame(width: 6, height: 6)
         }
-        .padding(8)   // 四周留白一致
-        .background(Capsule().fill(Color.gray.opacity(0.08)))
         .help("\(label)：\(ok ? "可用" : "未就绪")")
     }
 }
