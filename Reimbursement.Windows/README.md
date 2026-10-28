@@ -35,6 +35,27 @@ Core 与 Core.Tests 均为纯 net8.0，可在 Windows / macOS / Linux 上构建�
 - 会话：`%APPDATA%\Reimbursement\sessions\{sid}\{manifest.json, originals\, trips\}`
 - 打包输出：用户 Downloads 目录（经 Known Folder API 获取，不写死路径）
 
+## toolkit 融入（feature/windows-toolkit-merge 分支新增）
+
+reimburse-toolkit（Python）的核心能力已以 Core 服务形态并入，数据源从"文件名/目录解析"
+换成 app 的会话识别记录（manifest），并修复 toolkit 的已知缺陷：
+
+- **PdfComposer**（compose.py 的现代化形态）：「整合 PDF」导出。排版规则与 toolkit
+  一致（A4、边距 20pt、间距 8pt；行程证明页 P1 去+回上下排、交通 3×2、酒店水单整页、
+  酒店发票同页两份、滴滴/餐饮/自驾票据左旋 90° 网格）。实现改为 **矢量贴页**
+  （PDFsharp XPdfForm，文字保持清晰；图片原件按同样 fit 规则贴图）。返回贴页清单
+  （每页放了哪份票据的哪一页、什么规则、什么框）供 UI 预览。修复：①多页文档逐页纳入
+  （toolkit 只渲染第 0 页）②未上 P1 的登机牌进 3×2（toolkit 会整张消失）
+  ③其他类票据走 1×2 兜底排版（toolkit 直接丢弃）。
+- **PdfMerger**（merge.py）：「简单合并 PDF」——按行程顺序逐页矢量合并原件，
+  并补上 merge.py 漏掉的自驾行程单/加油/通行费。非 PDF 原件记入 Skipped。
+- **Preflight**（诊断套件的现代化形态）：「提交前检查」——识别失败/需复核、金额缺失、
+  水单缺发票、发票缺水单、滴滴单票缺边、行程未见返程、原文件缺失；以金额+类型交叉
+  校验，比 toolkit 只比文件名字母的配对检查更强。
+- 依赖新增 PDFsharp 6.2（MIT，进程内处理，无外部进程）。
+
+MCP 工具层（reimburse_mcp.py 的对应物）按规划放到二期。
+
 ## 与 Swift 版的行为差异（有意为之，详见分析报告 §7）
 
 - JSON 提取改用字符串感知的括号匹配状态机（Swift 版括号计数不感知字符串内容，字符串里的 `}` 会截错）。
