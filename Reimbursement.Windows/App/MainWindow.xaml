@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="Reimbursement.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="报销助手">
+    <Grid Padding="12" ColumnSpacing="12" RowSpacing="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="270" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 顶栏 -->
+        <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+                    Orientation="Horizontal" Spacing="10">
+            <TextBlock Text="报销助手" FontSize="20" FontWeight="SemiBold"
+                       VerticalAlignment="Center" />
+            <Button x:Name="SettingsBtn" Content="设置" Click="SettingsBtn_Click" />
+            <TextBlock x:Name="HomeLabel" VerticalAlignment="Center" Opacity="0.65" />
+        </StackPanel>
+
+        <!-- 左侧：会话列表 -->
+        <Grid Grid.Row="1" Grid.Column="0" RowSpacing="8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Button x:Name="NewSessionBtn" Grid.Row="0" Content="新建会话"
+                    HorizontalAlignment="Stretch" Click="NewSessionBtn_Click" />
+            <ListBox x:Name="SessionList" Grid.Row="1"
+                     SelectionChanged="SessionList_SelectionChanged" />
+        </Grid>
+
+        <!-- 右侧：会话详情 -->
+        <Grid Grid.Row="1" Grid.Column="1" RowSpacing="8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="150" />
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8">
+                <Button x:Name="ImportBtn" Content="导入票据" Click="ImportBtn_Click" />
+                <Button x:Name="RecognizeBtn" Content="识别待处理" Click="RecognizeBtn_Click" />
+                <Button x:Name="FinalizeBtn" Content="整理" Click="FinalizeBtn_Click" />
+                <Button x:Name="PreflightBtn" Content="提交前检查" Click="PreflightBtn_Click" />
+            </StackPanel>
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+                <Button x:Name="ExcelBtn" Content="导出明细 Excel" Click="ExcelBtn_Click" />
+                <Button x:Name="ComposeBtn" Content="整合 PDF" Click="ComposeBtn_Click" />
+                <Button x:Name="MergeBtn" Content="简单合并" Click="MergeBtn_Click" />
+                <Button x:Name="ZipBtn" Content="完整打包" Click="ZipBtn_Click" />
+                <Button x:Name="OpenExportsBtn" Content="打开导出文件夹" Click="OpenExportsBtn_Click" />
+            </StackPanel>
+            <ListBox x:Name="BillList" Grid.Row="2" />
+            <TextBox x:Name="LogBox" Grid.Row="3" IsReadOnly="True" AcceptsReturn="True"
+                     TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"
+                     PlaceholderText="日志" />
+        </Grid>
+    </Grid>
+</Window>
