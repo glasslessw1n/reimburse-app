@@ -26,14 +26,17 @@ jobs:
 
   app-build:
     name: WinUI app build
-    # 用 windows-2022（VS2022 工具链）：windows-latest 的 .NET 10 SDK 缺
-    # AppxPackage PRI 任务程序集，WinUI 构建会报 MSB4062（已实测）。
-    # 另有仓库根目录 global.json 把 SDK 钉在 8.0.x。
+    # 必须用 VS2022 的 msbuild 构建：WinUI 的 PRI 任务程序集
+    # （Microsoft.Build.Packaging.Pri.Tasks.dll）只随 Visual Studio 提供，
+    # 独立 .NET SDK 里没有，dotnet build 必然在 MrtCore.PriGen.targets 报
+    # MSB4062（SDK 8/10、windows-2022/latest 均已实测）。msbuild 的
+    # MSBuildExtensionsPath 指向 VS 安装目录，路径才能解析。
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-      - name: Build app (x64, unpackaged)
-        run: dotnet build Reimbursement.Windows/App/Reimbursement.App.csproj -c Release -p:Platform=x64
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build app (x64, unpackaged, via VS MSBuild)
+        run: msbuild Reimbursement.Windows/App/Reimbursement.App.csproj -restore -p:Configuration=Release -p:Platform=x64
