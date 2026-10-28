@@ -1,0 +1,35 @@
+name: windows
+
+on:
+  push:
+    branches:
+      - feature/windows-app
+      - feature/windows-core
+      - feature/windows-toolkit-merge
+    paths:
+      - "Reimbursement.Windows/**"
+      - ".github/workflows/windows.yml"
+  workflow_dispatch:
+
+jobs:
+  core-tests:
+    name: Core tests (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Run Core tests
+        run: dotnet test Reimbursement.Windows/Core.Tests/Reimbursement.Core.Tests.csproj -c Release
+
+  app-build:
+    name: WinUI app build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build app (x64, unpackaged)
+        run: dotnet build Reimbursement.Windows/App/Reimbursement.App.csproj -c Release -p:Platform=x64
