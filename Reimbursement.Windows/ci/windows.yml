@@ -9,6 +9,7 @@ on:
     paths:
       - "Reimbursement.Windows/**"
       - ".github/workflows/windows.yml"
+      - "global.json"
   workflow_dispatch:
 
 jobs:
@@ -25,7 +26,10 @@ jobs:
 
   app-build:
     name: WinUI app build
-    runs-on: windows-latest
+    # 用 windows-2022（VS2022 工具链）：windows-latest 的 .NET 10 SDK 缺
+    # AppxPackage PRI 任务程序集，WinUI 构建会报 MSB4062（已实测）。
+    # 另有仓库根目录 global.json 把 SDK 钉在 8.0.x。
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
