@@ -15,6 +15,9 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.240923002" />
+    <!-- 提供 Appx/PRI 打包任务（Microsoft.Build.Packaging.Pri.Tasks）：
+         独立 .NET SDK 不含该程序集（仅 VS 的 MSBuild 自带），纯 dotnet CLI / CI 构建必需 -->
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Core\Reimbursement.Core.csproj" />
