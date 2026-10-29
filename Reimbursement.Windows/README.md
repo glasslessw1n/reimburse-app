@@ -87,3 +87,16 @@ MCP 工具层（reimburse_mcp.py 的对应物）按规划放到二期。
   （修复 v1 finalize 前列表为空的问题）。
 - 数据落点以 App `Workflow.cs` 为准：`%APPDATA%\Reimbursement.Windows\`
   （`sessions/` + `settings.env`），README 旧版路径描述已过时。
+
+## UX v2 实测修复（2026-10-30）
+
+- **完整打包无产物**：`Finalize()` 漏接 `ZipPackager.ArrangeFiles`，`trips/` 永不存在，
+  打包恒抛「行程目录未生成」且错误只进折叠日志。已在 `Finalize` 内补 arrange、
+  `Workflow.ExportZip` 打包前再兜底一遍（幂等），未整理时给出明确提示；
+  整理/检查/导出结果改为自动展开日志区显示。
+- **滴滴发票 2×2 不占版**：真实滴滴发票是 A4 竖版承载、发票本体只占上半页，
+  旋转贴页按整页 fit 被空白拖小。新增 `PageContentBox`（PdfPig 计算文字+图片+
+  可见路径的内容边框，剪切路径不算内容），旋转贴页先裁到内容边框再 fit，
+  2×2 与整页单张均可占满；内容占满整页的票据（行程单等）行为不变。
+- GPU OCR 未做：PaddleOCR 的 CUDA 运行时按显卡架构分包，用户机器是 Intel 核显，
+  无 CUDA 路线，维持 CPU/MKLDNN。

@@ -52,6 +52,13 @@ public class ToolkitMergeTests
             Session.Ingest(new BillInfo(type, amount, src, fields));
         }
 
+        public void AddRaw(BillType type, double amount, string src, byte[] pdf,
+            Dictionary<string, string?> fields)
+        {
+            Session.SaveOriginal(pdf, src);
+            Session.Ingest(new BillInfo(type, amount, src, fields));
+        }
+
         public void Dispose()
         {
             if (Directory.Exists(Root)) Directory.Delete(Root, recursive: true);
@@ -132,6 +139,56 @@ public class ToolkitMergeTests
         var dinv = result.Placements.Single(p => p.Rule == "didi-invoice-full");
         Assert.Equal(-90, dinv.Rotation);
         Assert.InRange(dinv.Width, 554.0, 556.0);
+    }
+
+    /// <summary>滴滴发票式源页：A4 竖版，内容只占顶部约一半（边框 + 色块），下半页空白。</summary>
+    private static byte[] MakeTopContentPdfBytes()
+    {
+        using var doc = new PdfDocument();
+        var page = doc.AddPage();
+        page.Width = XUnit.FromPoint(595);
+        page.Height = XUnit.FromPoint(842);
+        using var gfx = XGraphics.FromPdfPage(page);
+        gfx.DrawRectangle(new XPen(XColors.DarkRed, 1.5), new XRect(8, 8, 579, 405));
+        gfx.DrawRectangle(XBrushes.LightGray, new XRect(8, 120, 579, 60));
+        gfx.DrawRectangle(XBrushes.LightGray, new XRect(8, 330, 579, 40));
+        using var ms = new MemoryStream();
+        doc.Save(ms);
+        return ms.ToArray();
+    }
+
+    [Fact]
+    public void ComposeDidiInvoicesWithTopOnlyContentFill2x2Cells()
+    {
+        // 用户实测问题（2026-10-30）：真实滴滴发票是 A4 竖版承载、发票本体只占上半页，
+        // 左旋后按整页 fit 被空白拖小（高仅约 192pt，占不满）；按内容边框 fit 后应占满 2×2 单元格。
+        using var f = new Fixture().Build(x =>
+        {
+            x.Add(BillType.BoardingPass, 800, "bp1.pdf", 1, new()
+            {
+                ["departure_date"] = "2026-09-10", ["origin_city"] = "重庆", ["destination_city"] = "厦门",
+            });
+            x.Add(BillType.BoardingPass, 820, "bp2.pdf", 1, new()
+            {
+                ["departure_date"] = "2026-09-12", ["origin_city"] = "厦门", ["destination_city"] = "重庆",
+            });
+            x.Add(BillType.DidiTrip, 85.5, "dform1.pdf", 1, new() { ["departure_date"] = "2026-09-11" });
+            x.Add(BillType.DidiTrip, 92.0, "dform2.pdf", 1, new() { ["departure_date"] = "2026-09-11" });
+            x.AddRaw(BillType.DidiInvoice, 85.5, "dinv1.pdf", MakeTopContentPdfBytes(),
+                new() { ["issue_date"] = "2026-09-13" });
+            x.AddRaw(BillType.DidiInvoice, 92.0, "dinv2.pdf", MakeTopContentPdfBytes(),
+                new() { ["issue_date"] = "2026-09-13" });
+        });
+        var result = PdfComposer.Compose(f.Session, Path.Combine(f.Root, "out.pdf"));
+        var cells = result.Placements.Where(p => p.Rule == "didi-invoice-2x2").ToList();
+        Assert.Equal(2, cells.Count);
+        Assert.Equal(cells[0].OutputPage, cells[1].OutputPage);
+        Assert.All(cells, p =>
+        {
+            Assert.Equal(-90, p.Rotation);
+            Assert.InRange(p.Width, 265.0, 274.0);   // 单元格宽 273.64：内容应基本占满
+            Assert.InRange(p.Height, 360.0, 397.0);  // 整页 fit 时仅约 192
+        });
     }
 
     [Fact]

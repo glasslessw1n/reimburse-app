@@ -225,4 +225,46 @@ public class SessionFlowTests
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
     }
+
+    [Fact]
+    public void FinalizeAloneArrangesTripsSoPackageWorks()
+    {
+        // 回归（2026-10-30 用户实测）：Windows 版曾漏接 ArrangeFiles，finalize 后 trips/ 不存在，
+        // 点「完整打包」恒失败且无产物。现在 Finalize 内部即完成 arrange，不再需要手动补调。
+        var root = Path.Combine(Path.GetTempPath(), "reimburse-flow2-" + Guid.NewGuid().ToString("N"));
+        var sessionsRoot = Path.Combine(root, "sessions");
+        var downloads = Path.Combine(root, "downloads");
+        var sid = Sessions.CreateNewSid();
+        try
+        {
+            var session = new SessionManager(sessionsRoot, sid);
+            var home = new HashSet<string> { "重庆" };
+            session.SaveOriginal(new byte[] { 1, 2, 3 }, "bp1.pdf");
+            session.Ingest(new BillInfo(BillType.BoardingPass, 800, "bp1.pdf", new()
+            {
+                ["departure_date"] = "2026-09-10", ["origin_city"] = "重庆", ["destination_city"] = "厦门",
+            }));
+            session.SaveOriginal(new byte[] { 4, 5, 6 }, "bp2.pdf");
+            session.Ingest(new BillInfo(BillType.BoardingPass, 820, "bp2.pdf", new()
+            {
+                ["departure_date"] = "2026-09-12", ["origin_city"] = "厦门", ["destination_city"] = "重庆",
+            }));
+
+            session.Finalize(home);
+
+            // 未手动 ArrangeFiles，trips/ 应已被 Finalize 建好
+            var tripDir = Path.Combine(session.RootDir, "trips", "0910-0912 厦门");
+            Assert.True(Directory.Exists(tripDir));
+            Assert.Equal(2, Directory.GetFiles(tripDir).Length);
+
+            var zipPath = Packaging.ZipPackager.Package(session, downloads, includeExcel: false);
+            Assert.True(File.Exists(zipPath));
+            using var zip = System.IO.Compression.ZipFile.OpenRead(zipPath);
+            Assert.Equal(2, zip.Entries.Count(e => e.FullName.Contains("登机牌")));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
 }

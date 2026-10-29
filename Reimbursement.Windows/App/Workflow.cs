@@ -197,6 +197,10 @@ public sealed class Workflow
     public string ExportZip(SessionManager session, IReadOnlySet<string> homeCities)
     {
         var bills = AllBills(session);
+        if (session.Manifest.Trips.Count == 0 && session.Manifest.Local.Count == 0)
+            throw new InvalidOperationException("尚未整理：请先点「整理」生成行程分组，再完整打包");
+        // 兜底：旧版本整理的会话没有 trips/（ArrangeFiles 曾漏接），打包前先补一遍（幂等）
+        ZipPackager.ArrangeFiles(session);
         return ZipPackager.Package(session, ExportsDir(session), includeExcel: true,
             homeCities: homeCities,
             excelWriter: p => ExcelBuilder.SaveTo(p, bills, homeCities));
