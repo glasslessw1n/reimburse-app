@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- PaddleInference / OpenCvSharp 原生库只有 win-x64 运行时资产；
+         固定 RID 让还原与产物布局与最终的 win-x64 自包含应用一致。 -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 内置离线 OCR：PP-OCRv5 中文 mobile 模型（随 Sdcb.PaddleOCR.Models.Local 打包） -->
+    <PackageReference Include="Sdcb.PaddleOCR" Version="3.3.1" />
+    <PackageReference Include="Sdcb.PaddleOCR.Models.Local" Version="3.3.1" />
+    <PackageReference Include="Sdcb.PaddleInference" Version="3.3.1" />
+    <PackageReference Include="Sdcb.PaddleInference.runtime.win64.mkl" Version="3.3.1.70" />
+    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.11.0.20250507" />
+    <!-- 扫描 PDF 渲染：PDFium + SkiaSharp（支持 WinUI 3 / .NET 8） -->
+    <PackageReference Include="PDFtoImage" Version="5.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Core\Reimbursement.Core.csproj" />
+  </ItemGroup>
+
+</Project>

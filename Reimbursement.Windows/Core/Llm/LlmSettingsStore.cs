@@ -17,6 +17,18 @@ public sealed class LlmSettings
     /// <summary>行程分组用的"常驻地"列表（行程名里要去掉的城市）。</summary>
     public List<string> ExcludeCities { get; set; } = new();
 
+    /// <summary>OCR 引擎选择：paddle（内置离线，默认）/ oxr（外部增强解析）/ none（仅文本层）。</summary>
+    public string OcrEngine { get; set; } = "paddle";
+
+    /// <summary>OXR 服务地址（默认 SoMark 免费接口）。</summary>
+    public string OxrBaseUrl { get; set; } = "https://free-oxr.somark.ai/api/v1";
+
+    /// <summary>OXR API Key（免费接口可留空，客户端自动用 dummy）。</summary>
+    public string OxrApiKey { get; set; } = "";
+
+    /// <summary>LLM 连接是否已在设置页通过测试（改动地址/模型/Key 后应重新验证，设置页负责清零）。</summary>
+    public bool LlmVerified { get; set; }
+
     /// <summary>常驻地集合（trim+小写、去空，供 TripResolver 切分用）。</summary>
     public HashSet<string> HomeCities => new(
         ExcludeCities.Select(c => c.Trim().ToLowerInvariant()).Where(c => c.Length > 0));
@@ -65,6 +77,14 @@ public sealed class LlmSettingsStore
                     s.ExcludeCities = value.Split(',', StringSplitOptions.RemoveEmptyEntries)
                         .Select(x => x.Trim()).ToList();
                     break;
+                case "OCR_ENGINE":
+                    if (value is "paddle" or "oxr" or "none") s.OcrEngine = value;
+                    break;
+                case "OXR_BASE_URL":
+                    if (Uri.TryCreate(value, UriKind.Absolute, out _)) s.OxrBaseUrl = value;
+                    break;
+                case "OXR_API_KEY": s.OxrApiKey = value; break;
+                case "LLM_VERIFIED": s.LlmVerified = value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase); break;
             }
         }
         return s;
@@ -83,6 +103,10 @@ public sealed class LlmSettingsStore
             $"LLM_MODEL={Settings.Model}",
             $"LLM_TIMEOUT={(int)Settings.TimeoutSeconds}",
         };
+        lines.Add($"OCR_ENGINE={Settings.OcrEngine}");
+        if (Settings.OxrBaseUrl.Length > 0) lines.Add($"OXR_BASE_URL={Settings.OxrBaseUrl}");
+        if (Settings.OxrApiKey.Length > 0) lines.Add($"OXR_API_KEY={Settings.OxrApiKey}");
+        lines.Add($"LLM_VERIFIED={(Settings.LlmVerified ? "1" : "0")}");
         if (Settings.BuyerName.Length > 0) lines.Add($"BUYER_NAME={Settings.BuyerName}");
         if (Settings.BuyerTaxNo.Length > 0) lines.Add($"BUYER_TAX_NO={Settings.BuyerTaxNo}");
         if (Settings.ExcludeCities.Count > 0)
