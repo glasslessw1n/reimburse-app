@@ -20,10 +20,13 @@ public sealed partial class MainWindow : Window
 
     public MainWindow()
     {
+        CrashLog.Write("MainWindow ctor start");
         InitializeComponent();
+        CrashLog.Write("MainWindow InitializeComponent done");
         RefreshSessions();
         UpdateHomeLabel();
         Log($"数据目录：{_wf.DataDir}");
+        CrashLog.Write("MainWindow ctor done");
     }
 
     // MARK: 工具
