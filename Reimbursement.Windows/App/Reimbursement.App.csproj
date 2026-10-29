@@ -9,6 +9,10 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
+    <!-- 自包含部署：.NET 运行时与 Windows App Runtime 一并打包，
+         目标机器零前置（不用预装任何运行时），解压/拷贝即可运行 -->
+    <SelfContained>true</SelfContained>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Reimbursement.App</AssemblyName>
