@@ -71,6 +71,13 @@ public sealed partial class MainWindow : Window
         LogBox.SelectionLength = 0;
     }
 
+    /// <summary>记日志并展开日志区（整理/检查/导出类结果用，避免用户看不到任何反馈）。</summary>
+    private void LogAndShow(string message)
+    {
+        Log(message);
+        LogExpander.IsExpanded = true;
+    }
+
     private void UpdateHomeLabel()
     {
         var settings = _wf.LoadSettings();
@@ -388,7 +395,7 @@ public sealed partial class MainWindow : Window
         {
             _session!.Finalize(HomeCities());
             _finalized = true;
-            Log($"整理完成：{_session.Manifest.Trips.Count} 段行程，本地 {_session.Manifest.Local.Count} 张");
+            LogAndShow($"整理完成：{_session.Manifest.Trips.Count} 段行程，本地 {_session.Manifest.Local.Count} 张");
             foreach (var trip in _session.Manifest.Trips)
                 Log($"  {trip.Dirname}（{trip.Bills.Count} 张）");
             RefreshDetail();
@@ -396,7 +403,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            Log($"整理失败：{ex.Message}");
+            LogAndShow($"整理失败：{ex.Message}");
         }
     }
 
@@ -406,10 +413,10 @@ public sealed partial class MainWindow : Window
         var issues = Preflight.Check(_session!, HomeCities());
         if (issues.Count == 0)
         {
-            Log("提交前检查：无问题 ✓");
+            LogAndShow("提交前检查：无问题 ✓");
             return;
         }
-        Log($"提交前检查：{issues.Count} 项");
+        LogAndShow($"提交前检查：{issues.Count} 项");
         foreach (var issue in issues)
             Log($"  [{issue.Severity}] {issue.Category}：{issue.Message}");
     }
@@ -417,8 +424,8 @@ public sealed partial class MainWindow : Window
     private void ExcelBtn_Click(object sender, RoutedEventArgs e)
     {
         if (!RequireSession()) return;
-        try { Log($"明细 Excel 已导出：{_wf.ExportExcel(_session!, HomeCities())}"); }
-        catch (Exception ex) { Log($"导出失败：{ex.Message}"); }
+        try { LogAndShow($"明细 Excel 已导出：{_wf.ExportExcel(_session!, HomeCities())}"); }
+        catch (Exception ex) { LogAndShow($"导出失败：{ex.Message}"); }
     }
 
     private void ComposeBtn_Click(object sender, RoutedEventArgs e)
@@ -427,10 +434,10 @@ public sealed partial class MainWindow : Window
         try
         {
             var result = _wf.ExportComposed(_session!);
-            Log($"整合 PDF 已生成：{result.OutputPath}（{result.PageCount} 页）");
+            LogAndShow($"整合 PDF 已生成：{result.OutputPath}（{result.PageCount} 页）");
             foreach (var s in result.Skipped) Log($"  跳过：{s}");
         }
-        catch (Exception ex) { Log($"整合失败：{ex.Message}"); }
+        catch (Exception ex) { LogAndShow($"整合失败：{ex.Message}"); }
     }
 
     private void MergeBtn_Click(object sender, RoutedEventArgs e)
@@ -439,17 +446,17 @@ public sealed partial class MainWindow : Window
         try
         {
             var result = _wf.ExportMerged(_session!);
-            Log($"简单合并已生成：{result.OutputPath}（{result.PageCount} 页）");
+            LogAndShow($"简单合并已生成：{result.OutputPath}（{result.PageCount} 页）");
             foreach (var s in result.Skipped) Log($"  跳过：{s}");
         }
-        catch (Exception ex) { Log($"合并失败：{ex.Message}"); }
+        catch (Exception ex) { LogAndShow($"合并失败：{ex.Message}"); }
     }
 
     private void ZipBtn_Click(object sender, RoutedEventArgs e)
     {
         if (!RequireSession()) return;
-        try { Log($"完整打包已生成：{_wf.ExportZip(_session!, HomeCities())}"); }
-        catch (Exception ex) { Log($"打包失败：{ex.Message}"); }
+        try { LogAndShow($"完整打包已生成：{_wf.ExportZip(_session!, HomeCities())}"); }
+        catch (Exception ex) { LogAndShow($"打包失败：{ex.Message}"); }
     }
 
     private async void OpenExportsBtn_Click(object sender, RoutedEventArgs e)

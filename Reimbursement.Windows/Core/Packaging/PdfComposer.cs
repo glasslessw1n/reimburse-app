@@ -24,6 +24,9 @@ public sealed record ComposeResult(string OutputPath, int PageCount,
 /// 3. 行程内与本地的其他类票据（出租/通信/其他等）走 1×2 兜底排版（toolkit 直接丢弃）。
 /// 实现方式也不同：toolkit 是 144dpi 光栅图贴页，这里是矢量贴页（XForm），文字保持清晰、体积更小；
 /// 图片原件（jpg/png/bmp）按同样的 fit 规则贴图（与 toolkit 对图片的处理等效）。
+/// 与 toolkit 的一处行为差异（用户实测后要求）：旋转贴页时若源页内容只占页面一部分
+/// （滴滴发票是 A4 竖版承载、发票本体只占上半页），按内容边框裁剪后再 fit，
+/// 否则发票会被整页空白拖小、占不满单元格；toolkit 按整页光栅 fit 同样偏小。
 /// </summary>
 public static class PdfComposer
 {
@@ -93,6 +96,8 @@ public static class PdfComposer
             public XImage? Image;
             /// <summary>每页的视觉尺寸（已按页面 /Rotate 交换宽高）。</summary>
             public List<(double W, double H)> PdfPageDims = new();
+            /// <summary>每页的内容边框（左上原点）；null = 按整页 fit。仅 /Rotate=0 的页计算。</summary>
+            public List<(double X, double Y, double W, double H)?> ContentBoxes = new();
             public void Dispose()
             {
                 Pdf?.Dispose();
@@ -133,6 +138,11 @@ public static class PdfComposer
                             var h = rotated ? p.Width.Point : p.Height.Point;
                             doc.PdfPageDims.Add((w, h));
                         }
+                        // 内容边框（旋转贴页按内容 fit 用）：仅对无 /Rotate 的页计算，
+                        // PdfPig 坐标在旋转页上语义不同，宁可回退整页 fit
+                        var allow = new List<bool>();
+                        foreach (var p in doc.Pdf.Pages) allow.Add(p.Rotate % 360 == 0);
+                        doc.ContentBoxes = PageContentBox.Compute(path, allow, doc.PdfPageDims);
                         result = doc;
                     }
                     else if (ext is ".jpg" or ".jpeg" or ".png" or ".bmp")
@@ -214,6 +224,30 @@ public static class PdfComposer
                 var target = new XRect(boxX, boxY, fitW, fitH);
                 if (form != null) _gfx!.DrawImage(form, target);
                 else _gfx!.DrawImage(doc.Image!, target);
+            }
+            else if (form != null && sourcePage < doc.ContentBoxes.Count
+                     && doc.ContentBoxes[sourcePage] is { } content)
+            {
+                // 左旋 90° + 按内容边框 fit：源页是 A4 竖版、发票本体只占一部分时，
+                // 先裁到内容边框再旋转，发票才能占满单元格（整页 fit 会被空白拖小）。
+                // 内容边框外扩 10pt 容纳边框线/印章（文字包围盒通常略小于票面）。
+                const double pad = 10.0;
+                var cx0 = Math.Max(0, content.X - pad);
+                var cy0 = Math.Max(0, content.Y - pad);
+                var cw = Math.Min(srcW, content.X + content.W + pad) - cx0;
+                var ch = Math.Min(srcH, content.Y + content.H + pad) - cy0;
+                var s = Math.Min(rect.W / ch, rect.H / cw);
+                fitW = ch * s; fitH = cw * s;
+                boxX = rect.X + (rect.W - fitW) / 2;
+                boxY = rect.Y + (rect.H - fitH) / 2;
+                var state = _gfx!.Save();
+                _gfx.IntersectClip(new XRect(rect.X, rect.Y, rect.W, rect.H));
+                _gfx.TranslateTransform(boxX + fitW / 2, boxY + fitH / 2);
+                _gfx.RotateTransform(rotation);
+                _gfx.ScaleTransform(s, s);
+                _gfx.TranslateTransform(-(cx0 + cw / 2), -(cy0 + ch / 2));
+                _gfx.DrawImage(form, new XRect(0, 0, srcW, srcH));
+                _gfx.Restore(state);
             }
             else
             {

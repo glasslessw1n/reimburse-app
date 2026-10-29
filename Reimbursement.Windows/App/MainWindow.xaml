@@ -143,7 +143,7 @@
             </ListBox>
 
             <!-- 诊断日志（可折叠） -->
-            <Expander Grid.Row="4" Header="诊断日志" HorizontalAlignment="Stretch"
+            <Expander x:Name="LogExpander" Grid.Row="4" Header="诊断日志" HorizontalAlignment="Stretch"
                       HorizontalContentAlignment="Stretch">
                 <TextBox x:Name="LogBox" IsReadOnly="True" AcceptsReturn="True"
                          TextWrapping="Wrap" FontFamily="Consolas" FontSize="12" Height="110" />

@@ -158,6 +158,10 @@ public sealed class SessionManager
         Manifest.Bills = trips.SelectMany(t => t.Bills).Concat(local).ToList();
         Manifest.NeedsReviewCount = Manifest.Bills.Count(b => b.NeedsReview);
         Save();
+
+        // 把票据按行程目录复制到 trips/（完整打包的输入）。此前 Windows 版漏了这步，
+        // trips/ 永不存在，ZipPackager.Package 恒抛"行程目录未生成"，打包无产物。
+        Packaging.ZipPackager.ArrangeFiles(this);
     }
 
     // MARK: - hotel match + enrich
