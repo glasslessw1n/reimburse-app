@@ -194,6 +194,10 @@ public class LlmSettingsStoreTests
             store.Settings.BuyerName = "医科达（上海）医疗器械有限公司";
             store.Settings.BuyerTaxNo = "91310000XXXXXXXXXX";
             store.Settings.ExcludeCities = new List<string> { "重庆", "成都" };
+            store.Settings.OcrEngine = "oxr";
+            store.Settings.OxrBaseUrl = "https://free-oxr.somark.ai/api/v1";
+            store.Settings.OxrApiKey = "oxr-key";
+            store.Settings.LlmVerified = true;
             store.Save();
 
             var text = File.ReadAllText(envPath);
@@ -207,6 +211,10 @@ public class LlmSettingsStoreTests
             Assert.Equal("医科达（上海）医疗器械有限公司", loaded.BuyerName);
             Assert.Equal(new[] { "重庆", "成都" }, loaded.ExcludeCities);
             Assert.True(loaded.HomeCities.SetEquals(new[] { "重庆", "成都" }));
+            Assert.Equal("oxr", loaded.OcrEngine);
+            Assert.Equal("https://free-oxr.somark.ai/api/v1", loaded.OxrBaseUrl);
+            Assert.Equal("oxr-key", loaded.OxrApiKey);
+            Assert.True(loaded.LlmVerified);
         }
         finally
         {

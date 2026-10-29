@@ -25,5 +25,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Core\Reimbursement.Core.csproj" />
+    <ProjectReference Include="..\Ocr\Reimbursement.Ocr.csproj" />
   </ItemGroup>
 </Project>

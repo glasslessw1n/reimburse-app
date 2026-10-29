@@ -4,6 +4,7 @@ using Reimbursement.Core.Models;
 using Reimbursement.Core.Packaging;
 using Reimbursement.Core.Recognition;
 using Reimbursement.Core.Storage;
+using Reimbursement.Ocr;
 
 namespace Reimbursement.App;
 
@@ -16,6 +17,10 @@ public sealed class Workflow
     public string DataDir { get; }
     public string SessionsRoot { get; }
     public string SettingsPath { get; }
+
+    // OCR 引擎单例（懒加载，首次遇到扫描件/图片才初始化模型）
+    private readonly PaddleOcrEngine _paddle = new();
+    private readonly PdfToImageRenderer _pdfRenderer = new();
 
     public Workflow()
     {
@@ -41,6 +46,10 @@ public sealed class Workflow
         store.Settings.BuyerName = settings.BuyerName;
         store.Settings.BuyerTaxNo = settings.BuyerTaxNo;
         store.Settings.ExcludeCities = settings.ExcludeCities;
+        store.Settings.OcrEngine = settings.OcrEngine;
+        store.Settings.OxrBaseUrl = settings.OxrBaseUrl;
+        store.Settings.OxrApiKey = settings.OxrApiKey;
+        store.Settings.LlmVerified = settings.LlmVerified;
         store.Save();
     }
 
@@ -52,8 +61,9 @@ public sealed class Workflow
 
     public SessionManager OpenSession(string sid) => new(SessionsRoot, sid);
 
+    /// <summary>会话内全部票据（manifest.bills 是权威列表：finalize 前是识别登记，finalize 后与 trips+local 同步）。</summary>
     public static List<BillInfo> AllBills(SessionManager session) =>
-        session.Manifest.Trips.SelectMany(t => t.Bills).Concat(session.Manifest.Local).ToList();
+        session.Manifest.Bills.ToList();
 
     /// <summary>已导入 originals 但还没有识别记录的文件（待识别队列）。</summary>
     public List<string> PendingFiles(SessionManager session)
@@ -70,57 +80,96 @@ public sealed class Workflow
             .ToList();
     }
 
-    /// <summary>导入一个文件到会话 originals，返回落盘名（同名自动 -2/-3）。</summary>
+    /// <summary>导入一个文件到会话 originals，返回落盘文件名（同名自动 -2/-3）。</summary>
     public string ImportFile(SessionManager session, string path) =>
-        session.SaveOriginal(File.ReadAllBytes(path), Path.GetFileName(path));
+        Path.GetFileName(session.SaveOriginal(File.ReadAllBytes(path), Path.GetFileName(path)));
+
+    /// <summary>删除某个源文件的全部旧识别记录（单张重试前调用，避免新旧结果并存）。</summary>
+    public void RemoveBillsForSource(SessionManager session, string sourceFile)
+    {
+        foreach (var bill in AllBills(session)
+                     .Where(b => string.Equals(b.SourceFile, sourceFile, StringComparison.OrdinalIgnoreCase))
+                     .ToList())
+            session.RemoveBill(bill.Uid);
+    }
 
     // MARK: 识别管线
 
-    /// <summary>
-    /// 待识别队列逐个处理：PDF 文本层直提 → LLM 两段式识别 → 登记。
-    /// 无文本层（疑似扫描件）跳过并在日志注明——OCR 引擎在 spike 分支接入后补齐。
-    /// 返回逐条日志。
-    /// </summary>
-    public async Task<List<string>> RecognizePendingAsync(
-        SessionManager session, LlmSettings settings, CancellationToken ct = default)
+    /// <summary>按设置组装文档文本管线：paddle=内置离线 OCR；oxr=外部解析优先、本地 OCR 兜底；none=仅文本层。</summary>
+    public DocumentTextExtractor BuildTextProvider(LlmSettings settings)
     {
-        var log = new List<string>();
-        var recognizer = new LlmRecognizer(new LlmClient(settings.ToConfig()));
-        foreach (var name in PendingFiles(session))
+        var oxr = new OxrDocumentParser(new OxrOptions(settings.OxrBaseUrl, settings.OxrApiKey));
+        return settings.OcrEngine switch
         {
-            ct.ThrowIfCancellationRequested();
-            var path = Path.Combine(session.RootDir, "originals", name);
-            var text = TextExtractor.Extract(path);
-            if (TextExtractor.LooksScanned(text))
-            {
-                log.Add($"{name}：无文本层（疑似扫描件），待 OCR 引擎接入，本次跳过");
-                continue;
-            }
-            var receipt = await recognizer.RecognizeAsync(text, name, name, ct);
-            var bill = ToBill(receipt, name);
-            session.Ingest(bill);
-            log.Add(bill.Error.Length > 0
-                ? $"{name}：识别失败——{bill.Error}"
-                : $"{name}：{bill.BillType.DisplayName()} ¥{bill.Amount:0.00}" +
-                  (bill.NeedsReview ? "（需复核）" : ""));
-        }
-        return log;
+            "oxr" => new DocumentTextExtractor(_paddle, _pdfRenderer, oxr, preferExternal: true),
+            "none" => new DocumentTextExtractor(),
+            _ => new DocumentTextExtractor(_paddle, _pdfRenderer),
+        };
     }
 
-    /// <summary>Receipt → BillInfo（金额取 fields["amount"]；低置信标复核——app 层组装，与 mac 版分工一致）。</summary>
-    private static BillInfo ToBill(Receipt receipt, string sourceFile)
+    /// <summary>
+    /// 对指定文件跑识别管线（带进度与汇总）。重跑已识别文件时先清掉旧记录，避免新旧并存。
+    /// </summary>
+    public async Task<RecognitionSummary> RunRecognitionAsync(
+        SessionManager session, LlmSettings settings, IReadOnlyList<string> fileNames,
+        IProgress<RecognitionProgress>? progress = null, CancellationToken ct = default)
     {
-        double amount = 0;
-        if (receipt.Fields.TryGetValue("amount", out var raw) && raw != null)
-            double.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out amount);
-        var lowConfidence = receipt.Error.Length == 0 && receipt.Confidence < 0.7;
-        return new BillInfo(receipt.ReceiptType, amount, sourceFile, receipt.Fields)
+        foreach (var name in fileNames) RemoveBillsForSource(session, name);
+        var pipeline = new RecognitionPipeline(
+            BuildTextProvider(settings),
+            new LlmRecognizer(new LlmClient(settings.ToConfig())));
+        return await pipeline.RunAsync(
+            fileNames,
+            name => Path.Combine(session.RootDir, "originals", name),
+            bill => session.Ingest(bill),
+            progress, ct);
+    }
+
+    /// <summary>识别全部待处理文件。</summary>
+    public Task<RecognitionSummary> RecognizePendingAsync(
+        SessionManager session, LlmSettings settings,
+        IProgress<RecognitionProgress>? progress = null, CancellationToken ct = default) =>
+        RunRecognitionAsync(session, settings, PendingFiles(session), progress, ct);
+
+    // MARK: LLM 验证
+
+    /// <summary>拉取模型列表（设置页下拉用）。</summary>
+    public async Task<List<string>> FetchModelsAsync(LlmSettings settings, CancellationToken ct = default) =>
+        await new LlmClient(settings.ToConfig()).ListModelsAsync(ct);
+
+    public sealed record LlmTestResult(bool Ok, string Message, IReadOnlyList<string> Models);
+
+    /// <summary>
+    /// 测试连接：先拉模型列表（验证地址与 Key），再用当前模型发一条最小对话（验证模型可用）。
+    /// </summary>
+    public async Task<LlmTestResult> TestLlmAsync(LlmSettings settings, CancellationToken ct = default)
+    {
+        if (settings.ApiKey.Length == 0)
+            return new LlmTestResult(false, "未填写 API Key", Array.Empty<string>());
+        var client = new LlmClient(settings.ToConfig());
+        List<string> models;
+        try
         {
-            Confidence = receipt.Confidence,
-            Error = receipt.Error,
-            NeedsReview = lowConfidence,
-            ReviewReason = lowConfidence ? $"识别置信度偏低（{receipt.Confidence:0.00}）" : "",
-        };
+            models = await client.ListModelsAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            return new LlmTestResult(false, $"拉取模型列表失败：{ex.Message}", Array.Empty<string>());
+        }
+        try
+        {
+            await client.ChatAsync("你是连接测试助手。", "请只回复 OK", useJSONFormat: false, ct: ct);
+        }
+        catch (Exception ex)
+        {
+            return new LlmTestResult(false,
+                $"模型列表可达（{models.Count} 个），但模型「{settings.Model}」调用失败：{ex.Message}", models);
+        }
+        var inList = models.Count == 0 || models.Contains(settings.Model);
+        return new LlmTestResult(true,
+            inList ? $"连接成功：共 {models.Count} 个模型，当前模型可用"
+                   : $"连接成功，但模型列表里没有「{settings.Model}」，请确认模型名",
+            models);
     }
 
     // MARK: 导出

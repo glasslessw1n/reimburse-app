@@ -62,3 +62,28 @@ MCP 工具层（reimburse_mcp.py 的对应物）按规划放到二期。
 - 原文件名清洗在 mac 版只防 `/` 的基础上，额外处理 Windows 非法字符 `\ < > : " | ? *`、控制字符与尾随点/空格。
 - ZIP/XLSX 全部进程内生成（替代 mac 的 ditto / /usr/bin/zip 外部进程）。
 - 其余业务规则（TripResolver、酒店配对、滴滴链接、buildFilename、Excel 防双计等）按 Swift 版逐条复刻，并由翻译过来的测试锁定。
+
+## UX v2（feature/windows-ux-v2 分支）
+
+针对 v1 实测反馈的六个问题重做：
+
+- **OCR 接入**：新增 `Ocr/` 适配器工程（net8.0，win-x64）。默认内置
+  **PaddleOCR**（Sdcb.PaddleOCR 3.3.1 + PP-OCRv5 中文 mobile 模型，随应用离线分发）；
+  PDF 文本层不足时用 PDFtoImage（PDFium）以 300 DPI 逐页渲染后 OCR，图片票据直接 OCR；
+  OCR 文本块经 `OcrTextFormatter` 按阅读顺序拼装后送 LLM。设置里可切换为
+  **OXR 云端解析**（SoMark，优先云端、失败回退本地 OCR）或关闭 OCR（仅文本层）。
+  Core 侧抽象为 `IDocumentTextProvider / IImageOcrEngine / IPdfPageRenderer`，可单测、可替换。
+- **拖放自动识别**：拖放区常驻；拖入或选择文件后自动导入并立即识别；
+  没有选中会话时自动新建。原「识别待处理」降为补处理/重试入口。
+- **设置页**：模型改为可编辑下拉，支持「拉取模型」与「测试连接」
+  （先拉列表验证地址/Key，再用当前模型发最小对话验证可用性），验证状态持久化，
+  改动地址/模型/Key 后自动回到未验证。
+- **进度与汇总**：识别管线（Core `RecognitionPipeline`）逐张汇报进度事件
+  （总数/完成数/当前文件/阶段），UI 显示进度条与取消按钮；结束后弹出汇总横幅
+  （成功/失败/需复核计数），失败时横幅可一键重试失败项，否则一键进入整理。
+- **界面**：步骤指示（导入→识别→整理检查→导出）、富状态票据行
+  （类型+金额+状态标签+失败/复核原因，单张重试/删除）、品牌橙拖放区、
+  诊断日志折叠收纳。票据行数据以 `manifest.bills` 为权威列表
+  （修复 v1 finalize 前列表为空的问题）。
+- 数据落点以 App `Workflow.cs` 为准：`%APPDATA%\Reimbursement.Windows\`
+  （`sessions/` + `settings.env`），README 旧版路径描述已过时。
