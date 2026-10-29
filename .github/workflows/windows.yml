@@ -38,11 +38,14 @@ jobs:
         with:
           dotnet-version: 8.0.x
       - uses: microsoft/setup-msbuild@v2
-      - name: Publish app (x64, unpackaged self-contained, via VS MSBuild)
-        run: msbuild Reimbursement.Windows/App/Reimbursement.App.csproj -restore -t:Publish -p:Configuration=Release -p:Platform=x64
+      # 注意：不要用 -t:Publish 出包——publish 会漏掉应用的 PRI 文件
+      # （Reimbursement.App.pri，XAML 界面就装在里面），产物启动即闪退（已实测）。
+      # 非打包自包含应用直接分发 build 输出目录（与 VS F5 运行的是同一份）。
+      - name: Build app (x64, unpackaged self-contained, via VS MSBuild)
+        run: msbuild Reimbursement.Windows/App/Reimbursement.App.csproj -restore -p:Configuration=Release -p:Platform=x64
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
           name: Reimbursement-Windows-x64-selfcontained
-          path: Reimbursement.Windows/App/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64/publish/
+          path: Reimbursement.Windows/App/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64/
           if-no-files-found: error
