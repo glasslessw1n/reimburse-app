@@ -6,7 +6,8 @@
     xmlns:local="using:Reimbursement.App"
     Title="报销助手">
     <!-- 注意：WinUI 的 Window 没有 Resources（WMC0011），模板挂在根 Grid 上 -->
-    <Grid Padding="16" ColumnSpacing="16" RowSpacing="12">
+    <Grid x:Name="RootGrid" Background="Transparent" AllowDrop="True"
+          DragOver="Root_DragOver" Drop="Root_Drop">
         <Grid.Resources>
         <!-- 平铺票据行（未整理时） -->
         <DataTemplate x:Key="FlatBillTemplate">
@@ -28,8 +29,9 @@
                 <Button Grid.Column="1" Content="重试" FontSize="12" Padding="10,3"
                         Tag="{Binding SourceFile}" IsEnabled="{Binding CanRetry}"
                         Click="RowRetryBtn_Click" />
-                <Button Grid.Column="2" Content="删除" FontSize="12" Padding="10,3"
+                <Button Grid.Column="2" Content="移除记录" FontSize="12" Padding="10,3"
                         Tag="{Binding Uid}" IsEnabled="{Binding CanDelete}"
+                        ToolTipService.ToolTip="只删除识别记录，原文件保留"
                         Click="RowDeleteBtn_Click" />
             </Grid>
         </DataTemplate>
@@ -59,8 +61,9 @@
                 <Button Grid.Column="2" Content="重试" FontSize="12" Padding="10,3"
                         Tag="{Binding SourceFile}" IsEnabled="{Binding CanRetry}"
                         Click="RowRetryBtn_Click" />
-                <Button Grid.Column="3" Content="删除" FontSize="12" Padding="10,3"
+                <Button Grid.Column="3" Content="移除记录" FontSize="12" Padding="10,3"
                         Tag="{Binding Uid}" IsEnabled="{Binding CanDelete}"
+                        ToolTipService.ToolTip="只删除识别记录，原文件保留"
                         Click="RowDeleteBtn_Click" />
             </Grid>
         </DataTemplate>
@@ -76,8 +79,8 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="{Binding ToggleGlyph}" FontSize="12"
-                               VerticalAlignment="Center" Opacity="0.7" />
+                    <FontIcon Grid.Column="0" Glyph="{Binding ToggleGlyph}" FontSize="11"
+                              VerticalAlignment="Center" Opacity="0.7" />
                     <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="13.5"
                                FontWeight="SemiBold" VerticalAlignment="Center" />
                     <TextBlock Grid.Column="2" Text="{Binding Subtitle}" FontSize="12"
@@ -91,210 +94,259 @@
             GroupTemplate="{StaticResource GroupBillTemplate}"
             HeaderTemplate="{StaticResource TripHeaderTemplate}" />
         </Grid.Resources>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="288" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Key="O" Modifiers="Control" Invoked="AccelImport_Invoked" />
+            <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="AccelPrimary_Invoked" />
+        </Grid.KeyboardAccelerators>
 
-        <!-- 顶栏 -->
-        <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2">
+        <!-- 自定义标题栏（内容延伸进标题栏，Mica 透出） -->
+        <Grid x:Name="TitleBarGrid" Grid.Row="0" Height="44" Padding="16,0,8,0">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0" Spacing="2">
-                <TextBlock Text="报销助手" FontSize="24" FontWeight="SemiBold" />
-                <TextBlock x:Name="HomeLabel" FontSize="12" Opacity="0.65" />
+            <FontIcon Grid.Column="0" Glyph="&#xE8A5;" FontSize="16" VerticalAlignment="Center"
+                      Foreground="{ThemeResource SystemAccentColor}" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="10,0,0,0"
+                        VerticalAlignment="Center">
+                <TextBlock Text="报销助手" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock x:Name="VersionLabel" Opacity="0.55" VerticalAlignment="Center"
+                           Style="{StaticResource CaptionTextBlockStyle}" />
             </StackPanel>
-            <Button x:Name="SettingsBtn" Grid.Column="1" Content="⚙ 设置"
-                    VerticalAlignment="Center" Click="SettingsBtn_Click" />
+            <!-- 右侧 146px 留给系统标题栏按钮（最小化/最大化/关闭），避免自绘按钮被盖住 -->
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" Margin="0,0,146,0">
+                <Button x:Name="DiagBtn" Background="Transparent" BorderThickness="0"
+                        ToolTipService.ToolTip="诊断日志" Click="DiagBtn_Click"
+                        AutomationProperties.Name="诊断日志">
+                    <FontIcon Glyph="&#xE9D9;" FontSize="15" />
+                </Button>
+                <Button x:Name="SettingsBtn" Background="Transparent" BorderThickness="0"
+                        ToolTipService.ToolTip="设置" Click="SettingsBtn_Click"
+                        AutomationProperties.Name="设置">
+                    <FontIcon Glyph="&#xE713;" FontSize="15" />
+                </Button>
+            </StackPanel>
         </Grid>
 
-        <!-- 步骤指示 -->
-        <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-                    Orientation="Horizontal" Spacing="18">
-            <TextBlock x:Name="Step1Text" Text="1 · 导入票据" FontSize="13" />
-            <TextBlock Text="›" Opacity="0.4" VerticalAlignment="Center" />
-            <TextBlock x:Name="Step2Text" Text="2 · 自动识别" FontSize="13" />
-            <TextBlock Text="›" Opacity="0.4" VerticalAlignment="Center" />
-            <TextBlock x:Name="Step3Text" Text="3 · 整理检查" FontSize="13" />
-            <TextBlock Text="›" Opacity="0.4" VerticalAlignment="Center" />
-            <TextBlock x:Name="Step4Text" Text="4 · 导出" FontSize="13" />
-        </StackPanel>
-
-        <!-- 左侧：会话列表（可展开看行程概要与金额，可删除） -->
-        <Grid Grid.Row="2" Grid.Column="0" RowSpacing="8">
+        <!-- 主体 -->
+        <Grid Grid.Row="1" Padding="16,4,16,16" ColumnSpacing="16" RowSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="288" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Text="会话" FontSize="14" FontWeight="SemiBold" />
-            <Button x:Name="NewSessionBtn" Grid.Row="1" Content="＋ 新建会话"
-                    Style="{StaticResource AccentButtonStyle}"
-                    HorizontalAlignment="Stretch" Click="NewSessionBtn_Click" />
-            <ListBox x:Name="SessionList" Grid.Row="2"
-                     SelectionChanged="SessionList_SelectionChanged">
-                <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
-                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                        <Setter Property="Padding" Value="4,2" />
-                    </Style>
-                </ListBox.ItemContainerStyle>
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <Expander HorizontalAlignment="Stretch"
-                                  HorizontalContentAlignment="Stretch" Padding="8,4">
-                            <Expander.Header>
-                                <Grid ColumnSpacing="8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" Spacing="1">
-                                        <TextBlock Text="{Binding Title}" FontSize="13"
-                                                   FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding Subtitle}" FontSize="11"
-                                                   Opacity="0.65" />
-                                    </StackPanel>
-                                    <TextBlock Grid.Column="1" Text="{Binding TotalText}"
-                                               FontSize="13" FontWeight="SemiBold"
-                                               VerticalAlignment="Center" />
-                                </Grid>
-                            </Expander.Header>
-                            <StackPanel Spacing="6" Margin="2,4,2,2">
-                                <ItemsControl ItemsSource="{Binding Briefs}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding}" FontSize="12"
-                                                       Opacity="0.85" Margin="0,1" />
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                <Button Content="删除此会话" FontSize="12" Padding="10,4"
-                                        HorizontalAlignment="Left"
-                                        Tag="{Binding Sid}" Click="SessionDeleteBtn_Click" />
-                            </StackPanel>
-                        </Expander>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-            <TextBlock Grid.Row="3" FontSize="11" Opacity="0.55" TextWrapping="Wrap"
-                       Text="每次报销建一个会话。点开会话可看行程与金额。把票据拖进右侧区域即可自动识别，不必先建会话。" />
-            <Button x:Name="ClearSessionsBtn" Grid.Row="4" Content="清除全部会话"
-                    FontSize="12" HorizontalAlignment="Left" Opacity="0.75"
-                    Click="ClearSessionsBtn_Click" />
-        </Grid>
-
-        <!-- 右侧：工作区 -->
-        <Grid Grid.Row="2" Grid.Column="1" RowSpacing="10">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <!-- 拖放区 -->
-            <Border x:Name="DropZone" Grid.Row="0" CornerRadius="10" Padding="16"
-                    BorderThickness="1.5" BorderBrush="#E8734A"
-                    Background="#14E8734A"
-                    AllowDrop="True" DragOver="DropZone_DragOver" Drop="DropZone_Drop">
-                <StackPanel Spacing="4" HorizontalAlignment="Center">
-                    <TextBlock Text="📥 把票据拖到这里" FontSize="17" FontWeight="SemiBold"
-                               HorizontalAlignment="Center" />
-                    <TextBlock FontSize="12" Opacity="0.7" HorizontalAlignment="Center"
-                               Text="PDF / JPG / PNG / BMP · 拖入后自动识别（扫描件走内置 OCR）" />
-                    <Button x:Name="ImportBtn" Content="或点击选择文件"
-                            HorizontalAlignment="Center" Margin="0,6,0,0"
-                            Click="ImportBtn_Click" />
-                </StackPanel>
-            </Border>
+            <!-- 状态行：常驻地/模型/OCR 概要 -->
+            <TextBlock x:Name="HomeLabel" Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+                       FontSize="12" Opacity="0.65" TextWrapping="Wrap" />
 
-            <!-- 工具栏 -->
-            <StackPanel Grid.Row="1" Orientation="Horizontal">
-                <Button x:Name="RecognizeBtn" Content="识别待处理" Margin="0,0,8,6" Click="RecognizeBtn_Click" />
-                <Button x:Name="FinalizeBtn" Content="整理" Margin="0,0,8,6" Click="FinalizeBtn_Click" />
-                <Button x:Name="PreflightBtn" Content="提交前检查" Margin="0,0,16,6" Click="PreflightBtn_Click" />
-                <Button x:Name="ExcelBtn" Content="导出明细 Excel" Margin="0,0,8,6" Click="ExcelBtn_Click" />
-                <Button x:Name="ComposeBtn" Content="整合 PDF" Margin="0,0,8,6" Click="ComposeBtn_Click" />
-                <Button x:Name="MergeBtn" Content="简单合并" Margin="0,0,8,6" Click="MergeBtn_Click" />
-                <Button x:Name="ZipBtn" Content="完整打包" Margin="0,0,8,6" Click="ZipBtn_Click" />
-                <Button x:Name="OpenExportsBtn" Content="打开导出文件夹" Margin="0,0,0,6" Click="OpenExportsBtn_Click" />
+            <!-- 步骤指示 -->
+            <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                        Orientation="Horizontal" Spacing="18">
+                <TextBlock x:Name="Step1Text" Text="1 · 导入票据" FontSize="13" />
+                <TextBlock Text="›" Opacity="0.4" VerticalAlignment="Center" />
+                <TextBlock x:Name="Step2Text" Text="2 · 自动识别" FontSize="13" />
+                <TextBlock Text="›" Opacity="0.4" VerticalAlignment="Center" />
+                <TextBlock x:Name="Step3Text" Text="3 · 整理检查" FontSize="13" />
+                <TextBlock Text="›" Opacity="0.4" VerticalAlignment="Center" />
+                <TextBlock x:Name="Step4Text" Text="4 · 导出" FontSize="13" />
             </StackPanel>
 
-            <!-- 进度 -->
-            <Grid x:Name="ProgressArea" Grid.Row="2" ColumnSpacing="10" Visibility="Collapsed">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Spacing="4">
-                    <ProgressBar x:Name="ProgressBar" Minimum="0" Maximum="1" Value="0" />
-                    <TextBlock x:Name="ProgressText" FontSize="12" Opacity="0.75" />
-                </StackPanel>
-                <Button x:Name="CancelBtn" Grid.Column="1" Content="取消" Click="CancelBtn_Click" />
+            <!-- 左侧：会话列表（可展开看行程概要与金额，可删除） -->
+            <Grid Grid.Row="2" Grid.Column="0" RowSpacing="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="会话" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <Button x:Name="NewSessionBtn" Grid.Row="1"
+                        Style="{StaticResource AccentButtonStyle}"
+                        HorizontalAlignment="Stretch" Click="NewSessionBtn_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE710;" FontSize="13" VerticalAlignment="Center" />
+                        <TextBlock Text="新建会话" />
+                    </StackPanel>
+                </Button>
+                <ListBox x:Name="SessionList" Grid.Row="2"
+                         SelectionChanged="SessionList_SelectionChanged">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Padding" Value="4,2" />
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Expander HorizontalAlignment="Stretch"
+                                      HorizontalContentAlignment="Stretch" Padding="8,4">
+                                <Expander.Header>
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Spacing="1">
+                                            <TextBlock Text="{Binding Title}" FontSize="13"
+                                                       FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding Subtitle}" FontSize="11"
+                                                       Opacity="0.65" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="{Binding TotalText}"
+                                                   FontSize="13" FontWeight="SemiBold"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+                                </Expander.Header>
+                                <StackPanel Spacing="6" Margin="2,4,2,2">
+                                    <ItemsControl ItemsSource="{Binding Briefs}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding}" FontSize="12"
+                                                           Opacity="0.85" Margin="0,1" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Button Content="删除此会话" FontSize="12" Padding="10,4"
+                                            HorizontalAlignment="Left"
+                                            Tag="{Binding Sid}" Click="SessionDeleteBtn_Click" />
+                                </StackPanel>
+                            </Expander>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock Grid.Row="3" FontSize="11" Opacity="0.55" TextWrapping="Wrap"
+                           Text="每次报销建一个会话。点开会话可看行程与金额。把票据拖进窗口任意位置即可自动识别，不必先建会话。" />
+                <Button x:Name="ClearSessionsBtn" Grid.Row="4" Content="清除全部会话"
+                        FontSize="12" HorizontalAlignment="Left" Opacity="0.75"
+                        Click="ClearSessionsBtn_Click" />
             </Grid>
 
-            <!-- 提交前检查结果横幅 -->
-            <Border x:Name="PreflightBanner" Grid.Row="3" CornerRadius="8" Padding="12,8"
-                    Background="#1E7B4F" Visibility="Collapsed">
-                <Grid ColumnSpacing="10">
+            <!-- 右侧：工作区 -->
+            <Grid Grid.Row="2" Grid.Column="1" RowSpacing="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- 反馈带：未配置提醒 / 操作结果 / 识别汇总（InfoBar 分级呈现，取代自绘横幅与日志广播） -->
+                <StackPanel Grid.Row="0" Spacing="8">
+                    <InfoBar x:Name="LlmWarnInfo" IsOpen="False" IsClosable="False"
+                             Severity="Warning" Title="尚未配置识别服务"
+                             Message="填写 LLM 地址与 API Key 并测试连接后，才能自动识别票据。">
+                        <InfoBar.ActionButton>
+                            <Button Content="打开设置" Click="SettingsBtn_Click" />
+                        </InfoBar.ActionButton>
+                    </InfoBar>
+                    <InfoBar x:Name="ResultInfo" IsOpen="False" Severity="Informational" />
+                    <InfoBar x:Name="SummaryInfo" IsOpen="False" Severity="Success" Title="识别完成">
+                        <InfoBar.ActionButton>
+                            <Button x:Name="SummaryActionBtn" Content="下一步：整理"
+                                    Click="SummaryActionBtn_Click" />
+                        </InfoBar.ActionButton>
+                    </InfoBar>
+                </StackPanel>
+
+                <!-- 拖放区（整窗也可拖放，这里是视觉引导） -->
+                <Border x:Name="DropZone" Grid.Row="1" CornerRadius="10" Padding="16"
+                        BorderThickness="1.5" BorderBrush="{ThemeResource DropBorderBrush}"
+                        Background="{ThemeResource DropBackgroundBrush}"
+                        AllowDrop="True" DragOver="DropZone_DragOver" Drop="DropZone_Drop">
+                    <StackPanel Spacing="4" HorizontalAlignment="Center">
+                        <FontIcon Glyph="&#xE896;" FontSize="22" HorizontalAlignment="Center"
+                                  Foreground="{ThemeResource DropBorderBrush}" />
+                        <TextBlock Text="把票据拖到这里" FontSize="17" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock FontSize="12" Opacity="0.7" HorizontalAlignment="Center"
+                                   Text="PDF / JPG / PNG / BMP · 拖入后自动识别（扫描件走内置 OCR）· 窗口任意位置都能放" />
+                        <Button x:Name="ImportBtn" Content="或点击选择文件（Ctrl+O）"
+                                HorizontalAlignment="Center" Margin="0,6,0,0"
+                                Click="ImportBtn_Click" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 操作条：状态机驱动的唯一主按钮 + 检查 + 导出菜单 -->
+                <Grid Grid.Row="2" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="PrimaryBtn" Grid.Column="0"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Content="导入票据" Click="PrimaryBtn_Click" />
+                    <Button x:Name="PreflightBtn" Grid.Column="1" Content="提交前检查"
+                            Click="PreflightBtn_Click" />
+                    <SplitButton x:Name="ExportSplit" Grid.Column="2" Content="导出"
+                                 Click="ExportSplit_Click">
+                        <SplitButton.Flyout>
+                            <MenuFlyout>
+                                <MenuFlyoutItem Text="完整打包 ZIP（明细表 + 整理好的票据文件夹）"
+                                                Click="ZipBtn_Click" />
+                                <MenuFlyoutItem Text="整合 PDF（所有票据排成 A4 打印版）"
+                                                Click="ComposeBtn_Click" />
+                                <MenuFlyoutItem Text="简单合并 PDF（原件按顺序拼起来）"
+                                                Click="MergeBtn_Click" />
+                                <MenuFlyoutItem Text="仅导出明细 Excel"
+                                                Click="ExcelBtn_Click" />
+                            </MenuFlyout>
+                        </SplitButton.Flyout>
+                    </SplitButton>
+                    <Button x:Name="OpenExportsBtn" Grid.Column="4" Content="打开导出文件夹"
+                            Click="OpenExportsBtn_Click" />
+                </Grid>
+
+                <!-- 进度 -->
+                <Grid x:Name="ProgressArea" Grid.Row="3" ColumnSpacing="10" Visibility="Collapsed">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="PreflightText" Grid.Column="0" Foreground="White"
-                               FontSize="12.5" VerticalAlignment="Center" TextWrapping="Wrap" />
-                    <Button Grid.Column="1" Content="关闭" Click="PreflightCloseBtn_Click" />
+                    <StackPanel Grid.Column="0" Spacing="4">
+                        <ProgressBar x:Name="ProgressBar" Minimum="0" Maximum="1" Value="0" />
+                        <TextBlock x:Name="ProgressText" FontSize="12" Opacity="0.75" />
+                    </StackPanel>
+                    <Button x:Name="CancelBtn" Grid.Column="1" Content="取消" Click="CancelBtn_Click" />
                 </Grid>
-            </Border>
 
-            <!-- 票据列表（未整理=平铺；整理后=按行程分组，可展开/收起，类别分色） -->
-            <ListBox x:Name="BillList" Grid.Row="4"
-                     ItemTemplateSelector="{StaticResource BillSelector}">
-                <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
-                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                        <Setter Property="Padding" Value="4,1" />
-                    </Style>
-                </ListBox.ItemContainerStyle>
-            </ListBox>
-
-            <!-- 诊断日志（可折叠） -->
-            <Expander x:Name="LogExpander" Grid.Row="5" Header="诊断日志" HorizontalAlignment="Stretch"
-                      HorizontalContentAlignment="Stretch">
-                <TextBox x:Name="LogBox" IsReadOnly="True" AcceptsReturn="True"
-                         TextWrapping="Wrap" FontFamily="Consolas" FontSize="12" Height="110" />
-            </Expander>
-        </Grid>
-
-        <!-- 完成汇总横幅 -->
-        <Border x:Name="SummaryBanner" Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
-                CornerRadius="8" Padding="14,10" Background="#1E7B4F" Visibility="Collapsed">
-            <Grid ColumnSpacing="12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="SummaryText" Grid.Column="0" Foreground="White"
-                           FontSize="13" VerticalAlignment="Center" TextWrapping="Wrap" />
-                <Button x:Name="SummaryActionBtn" Grid.Column="1" Content="下一步：整理"
-                        Click="SummaryActionBtn_Click" />
-                <Button x:Name="SummaryCloseBtn" Grid.Column="2" Content="关闭"
-                        Click="SummaryCloseBtn_Click" />
+                <!-- 票据区：空状态与列表二选一 -->
+                <Grid Grid.Row="4">
+                    <StackPanel x:Name="EmptyState" HorizontalAlignment="Center"
+                                VerticalAlignment="Center" Spacing="8" Visibility="Collapsed">
+                        <FontIcon Glyph="&#xE8A5;" FontSize="40" HorizontalAlignment="Center"
+                                  Opacity="0.35" />
+                        <TextBlock Text="还没有票据" Style="{StaticResource SubtitleTextBlockStyle}"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock Text="把 PDF 或图片拖进窗口，或点击上方按钮选择文件，识别会自动开始。"
+                                   Opacity="0.65" HorizontalAlignment="Center" />
+                    </StackPanel>
+                    <ListBox x:Name="BillList"
+                             ItemTemplateSelector="{StaticResource BillSelector}">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Padding" Value="4,1" />
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                    </ListBox>
+                </Grid>
             </Grid>
-        </Border>
+        </Grid>
     </Grid>
 </Window>

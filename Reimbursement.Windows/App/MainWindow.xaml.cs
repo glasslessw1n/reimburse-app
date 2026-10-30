@@ -1,13 +1,17 @@
 using System.Collections.ObjectModel;
+using System.Text;
 using Microsoft.UI;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Reimbursement.Core.Llm;
 using Reimbursement.Core.Models;
 using Reimbursement.Core.Recognition;
 using Reimbursement.Core.Storage;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Graphics;
 using Windows.Storage;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
@@ -41,7 +45,8 @@ public sealed class GroupHeaderRow
     public string Title { get; init; } = "";
     public string Subtitle { get; init; } = "";
     public bool IsExpanded { get; init; } = true;
-    public string ToggleGlyph => IsExpanded ? "▼" : "▶";
+    /// <summary>Segoe Fluent Icons 字形（展开=ChevronDown E70D / 收起=ChevronRight E76C），模板里用 FontIcon 呈现。</summary>
+    public string ToggleGlyph => IsExpanded ? "\uE70D" : "\uE76C";
 }
 
 /// <summary>会话列表的一张卡（可展开：行程概要 + 金额 + 删除）。</summary>
@@ -173,6 +178,18 @@ public sealed partial class MainWindow : Window
         CrashLog.Write("MainWindow ctor start");
         InitializeComponent();
         CrashLog.Write("MainWindow InitializeComponent done");
+        // Fluent 基线：Mica 材质 + 内容延伸进标题栏 + 初始/最小尺寸（评估 P4）
+        SystemBackdrop = new MicaBackdrop();
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(TitleBarGrid);
+        AppWindow.Resize(new SizeInt32(1240, 800));
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.PreferredMinimumWidth = 980;
+            presenter.PreferredMinimumHeight = 640;
+        }
+        var version = typeof(MainWindow).Assembly.GetName().Version;
+        VersionLabel.Text = version != null ? $"v{version.Major}.{version.Minor}.{version.Build}" : "";
         BillList.ItemsSource = _items;
         SessionList.ItemsSource = _sessionRows;
         RefreshSessions();
@@ -187,18 +204,48 @@ public sealed partial class MainWindow : Window
 
     private HashSet<string> HomeCities() => _wf.LoadSettings().HomeCities;
 
+    /// <summary>诊断日志只存内存缓冲（上限约 200KB），从主界面移除常驻日志区，改走标题栏的诊断窗口。</summary>
+    private readonly StringBuilder _logBuffer = new();
+
     private void Log(string message)
     {
-        LogBox.Text += $"[{DateTime.Now:HH:mm:ss}] {message}\n";
-        LogBox.SelectionStart = LogBox.Text.Length;
-        LogBox.SelectionLength = 0;
+        _logBuffer.Append($"[{DateTime.Now:HH:mm:ss}] {message}\n");
+        if (_logBuffer.Length > 200_000) _logBuffer.Remove(0, 50_000);
     }
 
-    /// <summary>记日志并展开日志区（整理/检查/导出类结果用，避免用户看不到任何反馈）。</summary>
-    private void LogAndShow(string message)
+    /// <summary>结果反馈：进日志的同时在 InfoBar 带露脸（取代旧的"展开日志才看得见"）。</summary>
+    private void LogAndShow(string message) => ShowResult(message, InfoBarSeverity.Informational, log: true);
+
+    private void ShowResult(string message, InfoBarSeverity severity, bool log = false)
     {
-        Log(message);
-        LogExpander.IsExpanded = true;
+        if (log) Log(message);
+        ResultInfo.Title = "";
+        ResultInfo.Severity = severity;
+        ResultInfo.Message = message;
+        ResultInfo.IsOpen = true;
+    }
+
+    private async void DiagBtn_Click(object sender, RoutedEventArgs e)
+    {
+        var box = new TextBox
+        {
+            Text = _logBuffer.Length > 0 ? _logBuffer.ToString() : "（暂无日志）",
+            IsReadOnly = true,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            FontFamily = new FontFamily("Consolas"),
+            FontSize = 12,
+            Height = 320,
+            Width = 640,
+        };
+        var dialog = new ContentDialog
+        {
+            Title = "诊断日志",
+            Content = box,
+            CloseButtonText = "关闭",
+            XamlRoot = Content.XamlRoot,
+        };
+        await dialog.ShowAsync();
     }
 
     private void UpdateHomeLabel()
@@ -214,17 +261,77 @@ public sealed partial class MainWindow : Window
         };
         HomeLabel.Text = $"常驻地：{cities}" +
             (settings.ApiKey.Length == 0
-                ? " · LLM 未配置，请先打开设置"
+                ? " · LLM 未配置"
                 : $" · 模型：{settings.Model} · {(settings.LlmVerified ? "已验证" : "未验证")} · OCR：{ocr}");
+        LlmWarnInfo.IsOpen = settings.ApiKey.Length == 0;
     }
 
     private void SetBusy(bool busy)
     {
-        foreach (var b in new[] { ImportBtn, RecognizeBtn, FinalizeBtn, PreflightBtn,
-                     ExcelBtn, ComposeBtn, MergeBtn, ZipBtn, NewSessionBtn, SettingsBtn,
-                     ClearSessionsBtn })
+        foreach (var b in new Button[] { ImportBtn, PrimaryBtn, PreflightBtn,
+                     NewSessionBtn, SettingsBtn, ClearSessionsBtn, OpenExportsBtn })
             b.IsEnabled = !busy;
+        ExportSplit.IsEnabled = !busy;
         CancelBtn.IsEnabled = busy;
+        _busy = busy;
+        UpdatePrimary();
+    }
+
+    private bool _busy;
+
+    /// <summary>
+    /// 流程状态机 → 唯一主按钮（评估蓝图 3.1）：每个状态只有一个该做的下一步，
+    /// 消灭"8 个等权重按钮靠用户自己拼流程"。状态由（会话/待识别数/已识别数/是否已整理）决定。
+    /// </summary>
+    private enum FlowAction { Import, Recognize, Finalize, Package }
+
+    private FlowAction CurrentFlowAction()
+    {
+        if (_session == null) return FlowAction.Import;
+        if (_wf.PendingFiles(_session).Count > 0) return FlowAction.Recognize;
+        if (Workflow.AllBills(_session).Count == 0) return FlowAction.Import;
+        return _finalized ? FlowAction.Package : FlowAction.Finalize;
+    }
+
+    private void UpdatePrimary()
+    {
+        if (_busy) { PrimaryBtn.IsEnabled = false; return; }
+        PrimaryBtn.IsEnabled = true;
+        var pending = _session != null ? _wf.PendingFiles(_session).Count : 0;
+        PrimaryBtn.Content = CurrentFlowAction() switch
+        {
+            FlowAction.Recognize => $"识别全部（{pending} 张待处理）",
+            FlowAction.Finalize => "整理（生成行程与规范文件名）",
+            FlowAction.Package => "完整打包 ZIP",
+            _ => "导入票据",
+        };
+    }
+
+    private async void PrimaryBtn_Click(object sender, RoutedEventArgs e)
+    {
+        switch (CurrentFlowAction())
+        {
+            case FlowAction.Recognize: RecognizeBtn_Click(sender, e); break;
+            case FlowAction.Finalize: FinalizeBtn_Click(sender, e); break;
+            case FlowAction.Package: ZipBtn_Click(sender, e); break;
+            default: ImportBtn_Click(sender, e); break;
+        }
+    }
+
+    /// <summary>导出 SplitButton 主体点击 = 默认项（完整打包）；箭头展开其余三种导出。</summary>
+    private void ExportSplit_Click(SplitButton sender, SplitButtonClickEventArgs args) =>
+        ZipBtn_Click(sender, new RoutedEventArgs());
+
+    private void AccelImport_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        if (!_busy) ImportBtn_Click(sender, new RoutedEventArgs());
+    }
+
+    private void AccelPrimary_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        if (!_busy) PrimaryBtn_Click(sender, new RoutedEventArgs());
     }
 
     private bool RequireSession()
@@ -359,7 +466,10 @@ public sealed partial class MainWindow : Window
         var idx = SessionList.SelectedIndex;
         if (idx < 0 || idx >= _summaries.Count) return;
         _session = _wf.OpenSession(_summaries[idx].Sid);
-        _finalized = _session.Manifest.Trips.Count > 0 || _session.Manifest.Local.Count > 0;
+        _finalized = _session.Manifest.Finalized;
+        if (_session.RecoveredFromCorruption)
+            ShowResult("这个会话的清单文件曾损坏，已从备份重建为空会话（原件文件未动）。备份在会话目录的 manifest.corrupt-*.json。",
+                InfoBarSeverity.Warning);
         HideSummary();
         HidePreflight();
         RefreshDetail();
@@ -398,9 +508,17 @@ public sealed partial class MainWindow : Window
     private void RefreshDetail()
     {
         _items.Clear();
-        if (_session == null) { UpdateSteps(); return; }
+        if (_session == null)
+        {
+            EmptyState.Visibility = Visibility.Visible;
+            UpdateSteps();
+            UpdatePrimary();
+            return;
+        }
 
         var pending = _wf.PendingFiles(_session);
+        EmptyState.Visibility = pending.Count == 0 && Workflow.AllBills(_session).Count == 0
+            ? Visibility.Visible : Visibility.Collapsed;
         var grouped = _finalized
             && (_session.Manifest.Trips.Count > 0 || _session.Manifest.Local.Count > 0);
         if (!grouped)
@@ -408,6 +526,7 @@ public sealed partial class MainWindow : Window
             foreach (var name in pending) _items.Add(PendingRow(name));
             foreach (var b in Workflow.AllBills(_session)) _items.Add(MakeBillRow(b, grouped: false));
             UpdateSteps();
+            UpdatePrimary();
             return;
         }
 
@@ -440,6 +559,7 @@ public sealed partial class MainWindow : Window
                 ungrouped.Select(b => (object)MakeBillRow(b, grouped: true)));
         }
         UpdateSteps();
+        UpdatePrimary();
     }
 
     private async void RowRetryBtn_Click(object sender, RoutedEventArgs e)
@@ -483,6 +603,25 @@ public sealed partial class MainWindow : Window
     }
 
     private async void DropZone_Drop(object sender, DragEventArgs e)
+    {
+        e.Handled = true; // 阻止冒泡到根 Grid 造成重复导入
+        if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
+        var items = await e.DataView.GetStorageItemsAsync();
+        var paths = items.OfType<StorageFile>().Select(f => f.Path).Where(p => p.Length > 0).ToList();
+        if (paths.Count > 0) await ImportAndRecognizeAsync(paths);
+    }
+
+    /// <summary>整窗拖放（评估 P6：不再只有橙色框能接文件）。</summary>
+    private void Root_DragOver(object sender, DragEventArgs e)
+    {
+        if (e.DataView.Contains(StandardDataFormats.StorageItems))
+        {
+            e.AcceptedOperation = DataPackageOperation.Copy;
+            e.DragUIOverride.Caption = "松开导入并自动识别";
+        }
+    }
+
+    private async void Root_Drop(object sender, DragEventArgs e)
     {
         if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
         var items = await e.DataView.GetStorageItemsAsync();
@@ -605,15 +744,14 @@ public sealed partial class MainWindow : Window
 
     private void ShowSummary(RecognitionSummary summary)
     {
-        SummaryText.Text =
-            $"识别完成：成功 {summary.Succeeded} · 失败 {summary.Failed} · 需复核 {summary.NeedsReview}（共 {summary.Total} 张）";
+        SummaryInfo.Message =
+            $"成功 {summary.Succeeded} · 失败 {summary.Failed} · 需复核 {summary.NeedsReview}（共 {summary.Total} 张）";
+        SummaryInfo.Severity = summary.Failed > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success;
         SummaryActionBtn.Content = summary.Failed > 0 ? "重试失败项" : "下一步：整理";
-        SummaryBanner.Background = new SolidColorBrush(
-            summary.Failed > 0 ? Colors.DarkGoldenrod : Colors.SeaGreen);
-        SummaryBanner.Visibility = Visibility.Visible;
+        SummaryInfo.IsOpen = true;
     }
 
-    private void HideSummary() => SummaryBanner.Visibility = Visibility.Collapsed;
+    private void HideSummary() => SummaryInfo.IsOpen = false;
 
     private async void SummaryActionBtn_Click(object sender, RoutedEventArgs e)
     {
@@ -672,35 +810,36 @@ public sealed partial class MainWindow : Window
             }
             var worst = errors > 0 ? PreflightSeverity.Error
                 : warnings > 0 ? PreflightSeverity.Warning : PreflightSeverity.Info;
+            // 检查明细直接进 InfoBar 正文（可换行），不再只丢进日志（评估 P1）
+            var detail = string.Join("\n", issues.Select(i => $"[{i.Severity}] {i.Category}：{i.Message}"));
             ShowPreflightBanner(
-                $"提交前检查：{errors} 个错误 · {warnings} 个警告 · {infos} 条提示（明细见下方诊断日志）", worst);
-            LogAndShow($"提交前检查：共 {issues.Count} 项（错误 {errors} · 警告 {warnings} · 提示 {infos}）");
+                $"提交前检查：{errors} 个错误 · {warnings} 个警告 · {infos} 条提示\n{detail}", worst);
+            Log($"提交前检查：共 {issues.Count} 项（错误 {errors} · 警告 {warnings} · 提示 {infos}）");
             foreach (var issue in issues)
                 Log($"  [{issue.Severity}] {issue.Category}：{issue.Message}");
         }
         catch (Exception ex)
         {
             CrashLog.WriteException("PreflightBtn_Click", ex);
-            ShowPreflightBanner($"提交前检查出错：{ex.Message}（详情见诊断日志）", PreflightSeverity.Error);
+            ShowPreflightBanner($"提交前检查出错：{ex.Message}", PreflightSeverity.Error);
             LogAndShow($"提交前检查出错：{ex.Message}");
         }
     }
 
     private void ShowPreflightBanner(string text, PreflightSeverity worst)
     {
-        PreflightText.Text = text;
-        PreflightBanner.Background = new SolidColorBrush(worst switch
+        ResultInfo.Title = "提交前检查";
+        ResultInfo.Severity = worst switch
         {
-            PreflightSeverity.Error => Color.FromArgb(0xFF, 0x9E, 0x2B, 0x25),
-            PreflightSeverity.Warning => Color.FromArgb(0xFF, 0x8A, 0x6D, 0x1F),
-            _ => Color.FromArgb(0xFF, 0x1E, 0x7B, 0x4F),
-        });
-        PreflightBanner.Visibility = Visibility.Visible;
+            PreflightSeverity.Error => InfoBarSeverity.Error,
+            PreflightSeverity.Warning => InfoBarSeverity.Warning,
+            _ => InfoBarSeverity.Success,
+        };
+        ResultInfo.Message = text;
+        ResultInfo.IsOpen = true;
     }
 
-    private void HidePreflight() => PreflightBanner.Visibility = Visibility.Collapsed;
-
-    private void PreflightCloseBtn_Click(object sender, RoutedEventArgs e) => HidePreflight();
+    private void HidePreflight() => ResultInfo.IsOpen = false;
 
     private void ExcelBtn_Click(object sender, RoutedEventArgs e)
     {
@@ -747,166 +886,26 @@ public sealed partial class MainWindow : Window
         await Windows.System.Launcher.LaunchFolderPathAsync(dir);
     }
 
-    // MARK: 设置
+    // MARK: 设置（独立 XAML 窗口，取代旧的 168 行代码拼对话框）
 
-    private async void SettingsBtn_Click(object sender, RoutedEventArgs e)
+    private SettingsWindow? _settingsWindow;
+
+    private void SettingsBtn_Click(object sender, RoutedEventArgs e)
     {
-        var settings = _wf.LoadSettings();
-        var verified = settings.LlmVerified;
-
-        var providerBox = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
-        var providers = LlmProviderInfo.All.ToList();
-        foreach (var p in providers) providerBox.Items.Add(p.DisplayName());
-        providerBox.SelectedIndex = Math.Max(0, providers.IndexOf(LlmProviderInfo.Match(settings.BaseUrl)));
-
-        var baseUrlBox = new TextBox { Text = settings.BaseUrl, Header = "API 地址（Base URL）" };
-        var apiKeyBox = new PasswordBox { Password = settings.ApiKey, Header = "API Key" };
-
-        var modelBox = new ComboBox
+        if (_settingsWindow != null)
         {
-            IsEditable = true,
-            Text = settings.Model,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-        };
-        var fetchBtn = new Button { Content = "拉取模型" };
-        var testBtn = new Button { Content = "测试连接" };
-        var llmStatus = new TextBlock
-        {
-            FontSize = 12,
-            Text = verified ? "连接状态：已验证 ✓" : "连接状态：未验证（改动地址/模型/Key 后需重新测试）",
-        };
-        var modelRow = new Grid { ColumnSpacing = 8 };
-        modelRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        modelRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        modelRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        Grid.SetColumn(modelBox, 0);
-        Grid.SetColumn(fetchBtn, 1);
-        Grid.SetColumn(testBtn, 2);
-        modelRow.Children.Add(modelBox);
-        modelRow.Children.Add(fetchBtn);
-        modelRow.Children.Add(testBtn);
-
-        void MarkUnverified()
-        {
-            verified = false;
-            llmStatus.Text = "连接状态：未验证（已改动，需重新测试）";
+            _settingsWindow.Activate();
+            return;
         }
-        baseUrlBox.TextChanged += (_, _) => MarkUnverified();
-        apiKeyBox.PasswordChanged += (_, _) => MarkUnverified();
-        modelBox.TextSubmitted += (_, _) => MarkUnverified();
-
-        LlmSettings CurrentFromInputs()
+        _settingsWindow = new SettingsWindow(_wf);
+        _settingsWindow.Closed += (_, _) =>
         {
-            var s = _wf.LoadSettings();
-            s.BaseUrl = baseUrlBox.Text.Trim();
-            s.ApiKey = apiKeyBox.Password;
-            s.Model = (modelBox.Text ?? "").Trim();
-            return s;
-        }
-
-        fetchBtn.Click += async (_, _) =>
-        {
-            fetchBtn.IsEnabled = false;
-            llmStatus.Text = "正在拉取模型列表…";
-            try
-            {
-                var models = await _wf.FetchModelsAsync(CurrentFromInputs());
-                modelBox.ItemsSource = models;
-                if (models.Count > 0 && !models.Contains(modelBox.Text)) modelBox.Text = models[0];
-                llmStatus.Text = $"已拉取 {models.Count} 个模型";
-            }
-            catch (Exception ex)
-            {
-                llmStatus.Text = $"拉取失败：{ex.Message}";
-            }
-            finally { fetchBtn.IsEnabled = true; }
-        };
-
-        testBtn.Click += async (_, _) =>
-        {
-            testBtn.IsEnabled = false;
-            llmStatus.Text = "正在测试连接…";
-            try
-            {
-                var result = await _wf.TestLlmAsync(CurrentFromInputs());
-                verified = result.Ok;
-                if (result.Models.Count > 0) modelBox.ItemsSource = result.Models.ToList();
-                llmStatus.Text = (result.Ok ? "✓ " : "✗ ") + result.Message;
-            }
-            catch (Exception ex)
-            {
-                verified = false;
-                llmStatus.Text = $"测试失败：{ex.Message}";
-            }
-            finally { testBtn.IsEnabled = true; }
-        };
-
-        providerBox.SelectionChanged += (_, _) =>
-        {
-            var p = providers[providerBox.SelectedIndex];
-            baseUrlBox.Text = p.DefaultBaseUrl();
-            modelBox.Text = p.DefaultModel();
-            MarkUnverified();
-        };
-
-        // OCR 设置
-        var ocrBox = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
-        ocrBox.Items.Add("内置 PaddleOCR（离线，默认）");
-        ocrBox.Items.Add("OXR 云端解析（增强，扫描件优先走云端）");
-        ocrBox.Items.Add("不用 OCR（仅 PDF 文本层）");
-        ocrBox.SelectedIndex = settings.OcrEngine switch { "oxr" => 1, "none" => 2, _ => 0 };
-        var oxrUrlBox = new TextBox { Text = settings.OxrBaseUrl, Header = "OXR 服务地址" };
-        var oxrKeyBox = new PasswordBox { Password = settings.OxrApiKey, Header = "OXR API Key（免费接口可留空）" };
-
-        var homeBox = new TextBox
-        {
-            Text = string.Join(",", settings.ExcludeCities),
-            Header = "常驻地城市（逗号分隔，如 重庆）",
-        };
-        var buyerBox = new TextBox { Text = settings.BuyerName, Header = "购方名称（发票抬头）" };
-        var taxBox = new TextBox { Text = settings.BuyerTaxNo, Header = "购方税号" };
-
-        var panel = new StackPanel { Spacing = 10, Width = 460 };
-        panel.Children.Add(new TextBlock { Text = "服务商预设" });
-        panel.Children.Add(providerBox);
-        panel.Children.Add(baseUrlBox);
-        panel.Children.Add(apiKeyBox);
-        panel.Children.Add(new TextBlock { Text = "模型" });
-        panel.Children.Add(modelRow);
-        panel.Children.Add(llmStatus);
-        panel.Children.Add(new TextBlock { Text = "OCR 引擎", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 0) });
-        panel.Children.Add(ocrBox);
-        panel.Children.Add(oxrUrlBox);
-        panel.Children.Add(oxrKeyBox);
-        panel.Children.Add(homeBox);
-        panel.Children.Add(buyerBox);
-        panel.Children.Add(taxBox);
-
-        var dialog = new ContentDialog
-        {
-            Title = "设置",
-            Content = new ScrollViewer { Content = panel, MaxHeight = 560 },
-            PrimaryButtonText = "保存",
-            CloseButtonText = "取消",
-            XamlRoot = Content.XamlRoot,
-        };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-        {
-            settings.BaseUrl = baseUrlBox.Text.Trim();
-            settings.Model = (modelBox.Text ?? "").Trim();
-            settings.ApiKey = apiKeyBox.Password;
-            settings.LlmVerified = verified;
-            settings.OcrEngine = ocrBox.SelectedIndex switch { 1 => "oxr", 2 => "none", _ => "paddle" };
-            settings.OxrBaseUrl = oxrUrlBox.Text.Trim();
-            settings.OxrApiKey = oxrKeyBox.Password;
-            settings.ExcludeCities = homeBox.Text
-                .Split(new[] { ',', '，', ' ' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(c => c.Trim()).Where(c => c.Length > 0).ToList();
-            settings.BuyerName = buyerBox.Text.Trim();
-            settings.BuyerTaxNo = taxBox.Text.Trim();
-            _wf.SaveSettings(settings);
+            _settingsWindow = null;
             UpdateHomeLabel();
-            Log("设置已保存");
-        }
+            UpdatePrimary();
+            Log("设置已保存（或关闭）");
+        };
+        _settingsWindow.Activate();
     }
+
 }
