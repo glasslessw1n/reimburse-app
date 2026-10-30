@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>Reimbursement.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -19,12 +19,12 @@
     <AssemblyName>Reimbursement.App</AssemblyName>
     <!-- 版本号唯一出处：发布时改这里（+ app.manifest 的 assemblyIdentity），
          界面标题栏与诊断信息从程序集版本读取。 -->
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <!-- 只保留中英资源，砍掉 WinUI/.NET 的 80+ 语种 MUI（评估：单语种用户全然无用） -->
     <SatelliteResourceLanguages>zh-CN;en-US</SatelliteResourceLanguages>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.240923002" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" />
     <!-- Velopack：安装（Setup.exe）与增量自动更新（走 GitHub Releases），非打包 WinUI 的推荐路线 -->
     <PackageReference Include="Velopack" Version="1.2.161" />
     <!-- 注意：WinUI 的 PRI 任务程序集只随 Visual Studio 的 MSBuild 提供，独立 .NET SDK 不含，

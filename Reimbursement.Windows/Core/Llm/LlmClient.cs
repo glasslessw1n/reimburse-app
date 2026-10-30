@@ -61,6 +61,9 @@ public sealed class LlmClient
     public async Task<string> ChatAsync(string system, string user,
         double temperature = 0.0, bool useJSONFormat = true, CancellationToken ct = default)
     {
+        // .NET 10 的 HttpClient 不再预检已取消的令牌（本地 A/B 复现证实：net8 抛 TaskCanceledException，
+        // net10 把取消令牌交给 handler、不观察令牌的 handler 会正常返回）——入口显式守卫，保证取消语义跨版本一致。
+        ct.ThrowIfCancellationRequested();
         if (_config.ApiKey.Length == 0) throw LlmException.NotConfigured();
 
         var systemForJson = system;
@@ -95,6 +98,7 @@ public sealed class LlmClient
             timeoutCts.CancelAfter(TimeSpan.FromSeconds(_config.TimeoutSeconds));
 
             using var resp = await _http.SendAsync(req, timeoutCts.Token);
+            ct.ThrowIfCancellationRequested(); // 同上：发送途中取消但传输层未观察到时，在读体前再拦一次
             var bodyStr = await resp.Content.ReadAsStringAsync(timeoutCts.Token);
 
             if (resp.IsSuccessStatusCode)
