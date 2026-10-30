@@ -30,6 +30,7 @@ public sealed class Workflow
         SessionsRoot = Path.Combine(DataDir, "sessions");
         SettingsPath = Path.Combine(DataDir, "settings.env");
         Directory.CreateDirectory(SessionsRoot);
+        Core.Diagnostics.AppLog.Configure(Path.Combine(DataDir, "logs"));
     }
 
     // MARK: 设置

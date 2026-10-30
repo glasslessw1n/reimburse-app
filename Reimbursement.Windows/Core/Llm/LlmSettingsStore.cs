@@ -62,7 +62,7 @@ public sealed class LlmSettingsStore
         {
             switch (key)
             {
-                case "LLM_API_KEY": s.ApiKey = value; break;
+                case "LLM_API_KEY": s.ApiKey = SecretProtector.Unprotect(value); break;
                 case "LLM_BASE_URL":
                     if (Uri.TryCreate(value, UriKind.Absolute, out _)) s.BaseUrl = value;
                     break;
@@ -83,7 +83,7 @@ public sealed class LlmSettingsStore
                 case "OXR_BASE_URL":
                     if (Uri.TryCreate(value, UriKind.Absolute, out _)) s.OxrBaseUrl = value;
                     break;
-                case "OXR_API_KEY": s.OxrApiKey = value; break;
+                case "OXR_API_KEY": s.OxrApiKey = SecretProtector.Unprotect(value); break;
                 case "LLM_VERIFIED": s.LlmVerified = value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase); break;
             }
         }
@@ -98,14 +98,14 @@ public sealed class LlmSettingsStore
         var lines = new List<string>
         {
             "# 报销整理 LLM 配置",
-            $"LLM_API_KEY={Settings.ApiKey}",
+            $"LLM_API_KEY={SecretProtector.Protect(Settings.ApiKey)}",
             $"LLM_BASE_URL={Settings.BaseUrl}",
             $"LLM_MODEL={Settings.Model}",
             $"LLM_TIMEOUT={(int)Settings.TimeoutSeconds}",
         };
         lines.Add($"OCR_ENGINE={Settings.OcrEngine}");
         if (Settings.OxrBaseUrl.Length > 0) lines.Add($"OXR_BASE_URL={Settings.OxrBaseUrl}");
-        if (Settings.OxrApiKey.Length > 0) lines.Add($"OXR_API_KEY={Settings.OxrApiKey}");
+        if (Settings.OxrApiKey.Length > 0) lines.Add($"OXR_API_KEY={SecretProtector.Protect(Settings.OxrApiKey)}");
         lines.Add($"LLM_VERIFIED={(Settings.LlmVerified ? "1" : "0")}");
         if (Settings.BuyerName.Length > 0) lines.Add($"BUYER_NAME={Settings.BuyerName}");
         if (Settings.BuyerTaxNo.Length > 0) lines.Add($"BUYER_TAX_NO={Settings.BuyerTaxNo}");

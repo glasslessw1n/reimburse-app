@@ -17,27 +17,58 @@ public sealed class SessionManager
     public string Sid { get; }
     public string RootDir { get; }
 
+    /// <summary>上次加载时 manifest 损坏、已改名备份并重建（评估 S3）——App 应向用户明示。</summary>
+    public bool RecoveredFromCorruption { get; private set; }
+    public string? CorruptBackupPath { get; private set; }
+
     public SessionManager(string sessionsRoot, string sid)
     {
         Sid = sid;
         RootDir = Path.Combine(sessionsRoot, sid);
         var manifestPath = Path.Combine(RootDir, "manifest.json");
         SessionManifest? loaded = null;
+        var corrupt = false;
         if (File.Exists(manifestPath))
         {
             try
             {
                 loaded = JsonSerializer.Deserialize<SessionManifest>(
                     File.ReadAllText(manifestPath), ReimburseJson.Options);
+                if (loaded == null) corrupt = true;
             }
-            catch (Exception) { loaded = null; }
+            catch (Exception ex)
+            {
+                // 评估 S3：损坏的清单不再静默吞掉覆盖——改名保留原文件，错误留痕并上抛状态。
+                corrupt = true;
+                Diagnostics.AppLog.Error("session", $"manifest 解析失败 sid={sid}", ex);
+            }
         }
         if (loaded != null)
         {
             Manifest = loaded;
+            // 单一事实源（评估 S2）：已整理的会话以 Bills 为准重新派生 Trips/Local，
+            // 盘上副本只当缓存，不信任——历史分叉（如删票只改了一处）在加载时自动愈合。
+            if (Manifest.Finalized)
+            {
+                try { RebuildDerived(); }
+                catch (Exception ex) { Diagnostics.AppLog.Error("session", $"派生视图重建失败 sid={sid}", ex); }
+            }
+            if (Manifest.SchemaVersion < SessionManifest.CurrentSchemaVersion)
+            {
+                Manifest.SchemaVersion = SessionManifest.CurrentSchemaVersion;
+                Save();
+            }
         }
         else
         {
+            if (corrupt && File.Exists(manifestPath))
+            {
+                var backup = Path.Combine(RootDir,
+                    $"manifest.corrupt-{DateTimeOffset.Now:yyyyMMddHHmmss}.json");
+                try { File.Move(manifestPath, backup); CorruptBackupPath = backup; } catch { }
+                RecoveredFromCorruption = true;
+                Diagnostics.AppLog.Warn("session", $"manifest 损坏已备份至 {backup} 并重建 sid={sid}");
+            }
             Manifest = new SessionManifest(
                 sid,
                 DateTimeOffset.Now.ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture),
@@ -45,6 +76,35 @@ public sealed class SessionManager
             Directory.CreateDirectory(Path.Combine(RootDir, "originals"));
             Save();
         }
+    }
+
+    /// <summary>
+    /// 从 Bills 重新派生 Trips/Local（行程归类 + 序号 + 目标文件名）。Finalize 与加载/单张维护共用，
+    /// 保证派生视图永远只是 Bills 的函数，不单独维护。
+    /// </summary>
+    public void RebuildDerived()
+    {
+        var home = new HashSet<string>(Manifest.HomeCities.Select(c => c.Trim().ToLowerInvariant())
+            .Where(c => c.Length > 0));
+        var (trips, local) = TripResolver.AssignTrips(Manifest.Bills, home);
+        foreach (var t in trips) AssignSequences(t.Bills);
+        AssignSequences(local);
+        foreach (var trip in trips)
+        {
+            foreach (var b in trip.Bills)
+            {
+                b.TargetSubdir = trip.Dirname;
+                b.TargetFilename = b.FinalTargetName.Length > 0 ? b.FinalTargetName : BuildFilename(b);
+            }
+        }
+        foreach (var b in local)
+        {
+            b.TargetSubdir = "本地";
+            b.TargetFilename = b.FinalTargetName.Length > 0 ? b.FinalTargetName : BuildFilename(b);
+        }
+        Manifest.Trips = trips;
+        Manifest.Local = local;
+        Manifest.NeedsReviewCount = Manifest.Bills.Count(b => b.NeedsReview);
     }
 
     // MARK: - 写入
@@ -102,12 +162,14 @@ public sealed class SessionManager
             if (bill.Confidence > Manifest.Bills[dupIdx].Confidence)
             {
                 Manifest.Bills[dupIdx] = bill;
+                if (Manifest.Finalized) RebuildDerived();
                 Save();
             }
             return;
         }
         Manifest.Bills.Add(bill);
-        if (bill.NeedsReview) Manifest.NeedsReviewCount += 1;
+        if (Manifest.Finalized) RebuildDerived();
+        Manifest.NeedsReviewCount = Manifest.Bills.Count(b => b.NeedsReview);
         Save();
     }
 
@@ -134,28 +196,11 @@ public sealed class SessionManager
         MatchAndEnrichHotel(bills);
         LinkDidiInvoices(bills);
 
-        var (trips, local) = TripResolver.AssignTrips(bills, homeCities);
-        foreach (var t in trips) AssignSequences(t.Bills);
-        AssignSequences(local);
-
-        foreach (var trip in trips)
-        {
-            var dirname = trip.Dirname;
-            foreach (var b in trip.Bills)
-            {
-                b.TargetSubdir = dirname;
-                b.TargetFilename = b.FinalTargetName.Length > 0 ? b.FinalTargetName : BuildFilename(b);
-            }
-        }
-        foreach (var b in local)
-        {
-            b.TargetSubdir = "本地";
-            b.TargetFilename = b.FinalTargetName.Length > 0 ? b.FinalTargetName : BuildFilename(b);
-        }
-
-        Manifest.Trips = trips;
-        Manifest.Local = local;
-        Manifest.Bills = trips.SelectMany(t => t.Bills).Concat(local).ToList();
+        Manifest.HomeCities = homeCities.ToList();
+        Manifest.Finalized = true;
+        RebuildDerived();
+        // Bills 落盘顺序与行程分组一致（界面平铺时天然成组）。
+        Manifest.Bills = Manifest.Trips.SelectMany(t => t.Bills).Concat(Manifest.Local).ToList();
         Manifest.NeedsReviewCount = Manifest.Bills.Count(b => b.NeedsReview);
         Save();
 
@@ -483,25 +528,24 @@ public sealed class SessionManager
     // MARK: - 单张维护
 
     /// <summary>
-    /// 删除单张票据（按 uid），并重算复核数。三处副本（Bills / 各行程 Bills / Local）
-    /// 必须同步删除——只删 Bills 会让已删票据在整合 PDF / 打包里从行程副本中"复活"。
+    /// 删除单张票据（按 uid）。Bills 是唯一事实源：删后若已整理则整体重新派生 Trips/Local，
+    /// 已删票据不可能在整合 PDF / 打包里"复活"（评估 S2 的结构性修法，取代旧的三副本手工同步）。
     /// </summary>
     public void RemoveBill(string uid)
     {
         Manifest.Bills.RemoveAll(b => b.Uid == uid);
-        foreach (var trip in Manifest.Trips)
-            trip.Bills.RemoveAll(b => b.Uid == uid);
-        Manifest.Local.RemoveAll(b => b.Uid == uid);
+        if (Manifest.Finalized) RebuildDerived();
         Manifest.NeedsReviewCount = Manifest.Bills.Count(b => b.NeedsReview);
         Save();
     }
 
-    /// <summary>用同 uid 的新识别结果替换旧票据（重新识别用）；找不到则追加。</summary>
+    /// <summary>用同 uid 的新识别结果替换旧票据（重新识别用）；找不到则追加。已整理时重新派生分组。</summary>
     public void ReplaceBill(BillInfo bill)
     {
         var idx = Manifest.Bills.FindIndex(b => b.Uid == bill.Uid);
         if (idx >= 0) Manifest.Bills[idx] = bill;
         else Manifest.Bills.Add(bill);
+        if (Manifest.Finalized) RebuildDerived();
         Manifest.NeedsReviewCount = Manifest.Bills.Count(b => b.NeedsReview);
         Save();
     }
@@ -515,6 +559,7 @@ public sealed class SessionManager
     /// <summary>持久化 manifest（先写临时文件再覆盖，近似原子写）。</summary>
     public void Save()
     {
+        Manifest.SchemaVersion = SessionManifest.CurrentSchemaVersion;
         Directory.CreateDirectory(RootDir);
         var path = Path.Combine(RootDir, "manifest.json");
         var tmp = path + ".tmp";
@@ -743,7 +788,8 @@ public static class Sessions
                     LocalAmount = m.Local.Sum(b => b.Amount),
                 });
             }
-            catch (Exception) { /* 损坏的 manifest 跳过，与 Swift 版一致 */ }
+            catch (Exception ex) { /* 损坏的 manifest 跳过，与 Swift 版一致（但留痕，评估 S4） */
+                Diagnostics.AppLog.Warn("session", $"会话列表跳过损坏 manifest: {ex.Message}"); }
         }
         return result.OrderByDescending(x => x.CreatedAt, StringComparer.Ordinal).ToList();
     }
