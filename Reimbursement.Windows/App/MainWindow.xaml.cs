@@ -204,6 +204,30 @@ public sealed partial class MainWindow : Window
 
     private HashSet<string> HomeCities() => _wf.LoadSettings().HomeCities;
 
+    /// <summary>
+    /// Velopack 自动更新：仅当本程序是经 Setup 安装的才查更新（便携 zip 运行自动跳过）。
+    /// 发现新版 → 后台下载 → InfoBar 告知"重启后生效"；VelopackApp.Run() 会在下次启动时完成替换。
+    /// 全程静默失败（无网络/限流都不打扰用户），细节进 AppLog。
+    /// </summary>
+    public async Task CheckForAppUpdateAsync()
+    {
+        try
+        {
+            var mgr = new Velopack.UpdateManager(
+                new Velopack.Sources.GithubSource("https://github.com/glasslessw1n/reimburse-app", null, false));
+            if (!mgr.IsInstalled) return;
+            var update = await mgr.CheckForUpdatesAsync();
+            if (update == null) return;
+            await mgr.DownloadUpdatesAsync(update);
+            ShowResult($"发现新版本 {update.TargetFullRelease.Version}，已下载，下次启动自动更新。",
+                InfoBarSeverity.Success, log: true);
+        }
+        catch (Exception ex)
+        {
+            Core.Diagnostics.AppLog.Warn("update", $"检查更新失败（忽略）：{ex.Message}");
+        }
+    }
+
     /// <summary>诊断日志只存内存缓冲（上限约 200KB），从主界面移除常驻日志区，改走标题栏的诊断窗口。</summary>
     private readonly StringBuilder _logBuffer = new();
 
