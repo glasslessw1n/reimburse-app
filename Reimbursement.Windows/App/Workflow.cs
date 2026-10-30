@@ -61,6 +61,17 @@ public sealed class Workflow
 
     public SessionManager OpenSession(string sid) => new(SessionsRoot, sid);
 
+    /// <summary>删除一个会话（整目录删除，不可恢复；调用方负责确认与当前会话切换）。</summary>
+    public void DeleteSession(string sid)
+    {
+        if (sid.Length == 0 || sid.Contains('/') || sid.Contains('\\') || sid.Contains("..")) return;
+        var dir = Path.Combine(SessionsRoot, sid);
+        if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+    }
+
+    /// <summary>清空全部会话。</summary>
+    public void ClearAllSessions() => Sessions.ClearAll(SessionsRoot);
+
     /// <summary>会话内全部票据（manifest.bills 是权威列表：finalize 前是识别登记，finalize 后与 trips+local 同步）。</summary>
     public static List<BillInfo> AllBills(SessionManager session) =>
         session.Manifest.Bills.ToList();
@@ -200,7 +211,10 @@ public sealed class Workflow
         if (session.Manifest.Trips.Count == 0 && session.Manifest.Local.Count == 0)
             throw new InvalidOperationException("尚未整理：请先点「整理」生成行程分组，再完整打包");
         // 兜底：旧版本整理的会话没有 trips/（ArrangeFiles 曾漏接），打包前先补一遍（幂等）
-        ZipPackager.ArrangeFiles(session);
+        var missing = ZipPackager.ArrangeFiles(session);
+        if (missing.Count > 0)
+            throw new InvalidOperationException(
+                $"以下 {missing.Count} 张票据的原文件缺失，无法完整打包：{string.Join("、", missing)}");
         return ZipPackager.Package(session, ExportsDir(session), includeExcel: true,
             homeCities: homeCities,
             excelWriter: p => ExcelBuilder.SaveTo(p, bills, homeCities));
