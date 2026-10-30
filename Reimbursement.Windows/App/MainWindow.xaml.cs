@@ -183,11 +183,8 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBarGrid);
         AppWindow.Resize(new SizeInt32(1240, 800));
-        if (AppWindow.Presenter is OverlappedPresenter presenter)
-        {
-            presenter.PreferredMinimumWidth = 980;
-            presenter.PreferredMinimumHeight = 640;
-        }
+        // PreferredMinimumWidth/Height 是 AppSDK 1.7+ 才有的 API，1.6 不存在（CI #17 实证 CS1061）；
+        // 初始尺寸给足即可，最小尺寸强制等 .NET 10 升级到新版 AppSDK 后补回。
         var version = typeof(MainWindow).Assembly.GetName().Version;
         VersionLabel.Text = version != null ? $"v{version.Major}.{version.Minor}.{version.Build}" : "";
         BillList.ItemsSource = _items;
