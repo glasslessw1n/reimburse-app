@@ -6,6 +6,7 @@ on:
       - feature/windows-app
       - feature/windows-core
       - feature/windows-toolkit-merge
+      - feature/windows-ux-v2
     paths:
       - "Reimbursement.Windows/**"
       - ".github/workflows/windows.yml"
@@ -43,6 +44,28 @@ jobs:
       # 非打包自包含应用直接分发 build 输出目录（与 VS F5 运行的是同一份）。
       - name: Build app (x64, unpackaged self-contained, via VS MSBuild)
         run: msbuild Reimbursement.Windows/App/Reimbursement.App.csproj -restore -p:Configuration=Release -p:Platform=x64
+      # 产物门禁：#9 曾因漏 PRI 静默闪退、84MB 的 PDB 白占体积——
+      # 上传前先验关键文件齐全，再剔除 PDB，缺一即红，不许残缺产物出厂。
+      - name: Verify artifact contents and strip PDBs
+        shell: pwsh
+        run: |
+          $dir = "Reimbursement.Windows/App/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64"
+          $required = @(
+            "Reimbursement.App.exe",
+            "Reimbursement.App.pri",
+            "Reimbursement.Core.dll",
+            "Reimbursement.Ocr.dll"
+          )
+          foreach ($f in $required) {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "产物缺失关键文件: $f" }
+          }
+          $pdfium = Get-ChildItem -Path $dir -Recurse -Filter "pdfium.dll" | Select-Object -First 1
+          if (-not $pdfium) { throw "产物缺失关键文件: pdfium.dll" }
+          $paddle = Get-ChildItem -Path $dir -Recurse -Filter "paddle_inference_c.dll" | Select-Object -First 1
+          if (-not $paddle) { throw "产物缺失关键文件: paddle_inference_c.dll" }
+          $pdbCount = (Get-ChildItem -Path $dir -Recurse -Filter "*.pdb").Count
+          Get-ChildItem -Path $dir -Recurse -Filter "*.pdb" | Remove-Item -Force
+          Write-Host "产物门禁通过；已剔除 $pdbCount 个 PDB"
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
