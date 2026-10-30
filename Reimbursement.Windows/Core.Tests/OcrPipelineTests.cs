@@ -55,8 +55,10 @@ public class OcrPipelineTests
 
     private sealed class FakeRenderer : IPdfPageRenderer
     {
-        public IReadOnlyList<byte[]> RenderPngPages(string pdfPath, int dpi = 300) =>
-            new[] { new byte[] { 1, 2, 3 } };
+        public IEnumerable<byte[]> EnumeratePngPages(string pdfPath, int dpi = 300)
+        {
+            yield return new byte[] { 1, 2, 3 };
+        }
     }
 
     private static string TempFile(string name, byte[] bytes)

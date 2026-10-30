@@ -95,7 +95,11 @@ public interface IImageOcrEngine
 /// <summary>把 PDF 逐页渲染为 PNG 字节（OCR 前置步骤）。</summary>
 public interface IPdfPageRenderer
 {
-    IReadOnlyList<byte[]> RenderPngPages(string pdfPath, int dpi = 300);
+    /// <summary>
+    /// 逐页懒渲染 PNG（评估 M1）：调用方逐页消费、逐页释放，
+    /// 不再整册物化（100 页扫描件旧契约可吃掉 0.5–2.5GB 内存）。
+    /// </summary>
+    IEnumerable<byte[]> EnumeratePngPages(string pdfPath, int dpi = 300);
 }
 
 /// <summary>文档 → 纯文本的统一入口（文本层 / OCR / 外部解析）。</summary>
@@ -186,20 +190,24 @@ public sealed class DocumentTextExtractor : IDocumentTextProvider
                 externalNote + "缺少 PDF 页面渲染器，无法对扫描件做 OCR");
             }
 
-            var pages = await Task.Run(() => _renderer.RenderPngPages(path, _renderDpi), ct);
+            // 逐页流式：渲染一页 → OCR 一页 → 释放，内存峰值只与单页有关（评估 M1）
             var parts = new List<string>();
-            foreach (var page in pages)
+            var pageCount = 0;
+            using var en = _renderer.EnumeratePngPages(path, _renderDpi).GetEnumerator();
+            while (true)
             {
                 ct.ThrowIfCancellationRequested();
-                var blocks = await _localOcr.RecognizeBlocksAsync(page, ct);
+                if (!await Task.Run(() => en.MoveNext(), ct)) break;
+                pageCount++;
+                var blocks = await _localOcr.RecognizeBlocksAsync(en.Current, ct);
                 var pageText = OcrTextFormatter.Format(blocks);
                 if (pageText.Length > 0) parts.Add(pageText);
             }
             var all = string.Join("\n", parts);
             return TextExtractor.LooksScanned(all)
             ? new DocumentTextResult(all, DocumentTextSource.None,
-            externalNote + $"{_localOcr.DisplayName} 未识别出可用文本", pages.Count)
-            : new DocumentTextResult(all, DocumentTextSource.LocalOcr, "", pages.Count);
+            externalNote + $"{_localOcr.DisplayName} 未识别出可用文本", pageCount)
+            : new DocumentTextResult(all, DocumentTextSource.LocalOcr, "", pageCount);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)

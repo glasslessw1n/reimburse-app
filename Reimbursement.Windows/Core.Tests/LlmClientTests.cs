@@ -154,6 +154,55 @@ public class LlmClientTests
         var models = await client.ListModelsAsync();
         Assert.Equal(new[] { "gpt-a", "gpt-b" }, models);
     }
+    // MARK: - 重试分级（评估 H3）
+
+    private static LlmClient MakeClient(FakeHandler handler) => new(
+        new LlmConfig("sk-test", "https://api.example.com/v1", "test-model"),
+        new HttpClient(handler));
+
+    [Fact]
+    public async Task ChatJsonDoesNotRetryPermanent4xx()
+    {
+        var handler = new FakeHandler();
+        handler.Enqueue(HttpStatusCode.Unauthorized, "{\"error\":\"bad key\"}");
+        var client = MakeClient(handler);
+
+        var ex = await Assert.ThrowsAsync<LlmException>(
+            () => client.ChatJsonAsync("sys json", "user"));
+        Assert.Equal(LlmException.Kind.Http, ex.ErrorKind);
+        Assert.Equal(401, ex.HttpStatus);
+        Assert.Single(handler.RequestBodies); // 401 不重试：只打一次
+    }
+
+    [Fact]
+    public async Task ChatJsonRetriesTransient5xxThenThrows()
+    {
+        var handler = new FakeHandler();
+        handler.Enqueue(HttpStatusCode.InternalServerError, "boom");
+        handler.Enqueue(HttpStatusCode.BadGateway, "boom");
+        handler.Enqueue(HttpStatusCode.InternalServerError, "boom");
+        var client = MakeClient(handler);
+
+        var ex = await Assert.ThrowsAsync<LlmException>(
+            () => client.ChatJsonAsync("sys json", "user"));
+        Assert.Equal(LlmException.Kind.AllRetriesFailed, ex.ErrorKind);
+        Assert.Equal(3, handler.RequestBodies.Count); // 1 + 2 次重试
+    }
+
+    [Fact]
+    public async Task ChatJsonCancellationPropagatesImmediately()
+    {
+        var handler = new FakeHandler();
+        handler.Enqueue(HttpStatusCode.OK, FakeHandler.Chat("{\"a\":1}"));
+        var client = MakeClient(handler);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // TaskCanceledException 是 OperationCanceledException 的子类，一并接受
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => client.ChatJsonAsync("sys json", "user", ct: cts.Token));
+    }
+
 }
 
 /// <summary>.env 解析/存盘（Swift 版无测试，为新增覆盖）。</summary>
@@ -221,4 +270,5 @@ public class LlmSettingsStoreTests
             if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
         }
     }
+
 }

@@ -58,9 +58,10 @@ public static class BillFactory
 }
 
 /// <summary>
-/// 识别管线：逐张 文档文本提取 → LLM 两段式识别 → 登记回调，
-/// 全程通过 IProgress 汇报进度，最终返回汇总。顺序执行——本地 OCR 引擎
-/// （PaddleOCR）非线程安全，且 LLM 顺序调用便于限流与取消。
+/// 识别管线（评估 H3 分段并行）：两段推进——
+/// 第一段文本提取严格串行（本地 PaddleOCR 非线程安全，且渲染/OCR 都是 CPU 活）；
+/// 第二段 LLM 识别是网络等待，有界并发（默认 3）重叠往返，汇总顺序仍按输入序。
+/// ingest 回调（会话落盘）非线程安全，并发段内串行化调用。
 /// 文本提取失败也会登记一张带 error 的 BillInfo，让 UI 能展示失败行并提供单张重试。
 /// </summary>
 public sealed class RecognitionPipeline
@@ -79,16 +80,27 @@ public sealed class RecognitionPipeline
         Func<string, string> pathOf,
         Action<BillInfo> ingest,
         IProgress<RecognitionProgress>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        int llmConcurrency = 3)
     {
-        var items = new List<RecognitionItemResult>();
+        var total = fileNames.Count;
+        var slots = new RecognitionItemResult?[total];
         var completed = 0;
-
-        foreach (var name in fileNames)
+        var ingestGate = new object();
+        int CompleteOne(int idx, RecognitionItemResult item)
         {
+            slots[idx] = item;
+            return Interlocked.Increment(ref completed);
+        }
+
+        // 第一段：串行提取文本（OCR/渲染不并发）
+        var extracted = new List<(int Idx, string Name, DocumentTextResult Doc)>();
+        for (var i = 0; i < total; i++)
+        {
+            var name = fileNames[i];
             ct.ThrowIfCancellationRequested();
             progress?.Report(new RecognitionProgress(
-                fileNames.Count, completed, name, RecognitionStage.ExtractingText, "正在提取文本…"));
+                total, completed, name, RecognitionStage.ExtractingText, "正在提取文本…"));
 
             var doc = await _textProvider.ExtractAsync(pathOf(name), ct);
             if (!doc.HasUsableText)
@@ -101,35 +113,47 @@ public sealed class RecognitionPipeline
                     NeedsReview = true,
                     ReviewReason = "文本提取失败，可重试或检查 OCR 设置",
                 };
-                ingest(failed);
-                completed++;
-                items.Add(new RecognitionItemResult(name, false, true, message, doc.Source.ToString()));
+                lock (ingestGate) ingest(failed);
+                CompleteOne(i, new RecognitionItemResult(name, false, true, message, doc.Source.ToString()));
                 progress?.Report(new RecognitionProgress(
-                    fileNames.Count, completed, name, RecognitionStage.Failed, message));
+                    total, completed, name, RecognitionStage.Failed, message));
                 continue;
             }
-
-            progress?.Report(new RecognitionProgress(
-                fileNames.Count, completed, name, RecognitionStage.Recognizing,
-                doc.Source == DocumentTextSource.PdfTextLayer ? "文本层直提，正在调用模型识别…" : "OCR 完成，正在调用模型识别…"));
-
-            var receipt = await _recognizer.RecognizeAsync(doc.Text, name, name, ct);
-            var bill = BillFactory.FromReceipt(receipt, name);
-            ingest(bill);
-            completed++;
-
-            var ok = bill.Error.Length == 0;
-            var itemMessage = ok
-                ? $"{bill.BillType.DisplayName()} ¥{bill.Amount:0.00}" + (bill.NeedsReview ? "（需复核）" : "")
-                : $"识别失败——{bill.Error}";
-            items.Add(new RecognitionItemResult(name, ok, bill.NeedsReview, itemMessage, doc.Source.ToString()));
-            progress?.Report(new RecognitionProgress(
-                fileNames.Count, completed, name,
-                ok ? RecognitionStage.Completed : RecognitionStage.Failed, itemMessage));
+            extracted.Add((i, name, doc));
         }
 
+        // 第二段：LLM 有界并发（ingest 与进度计数串行化）
+        using var sem = new SemaphoreSlim(Math.Max(1, llmConcurrency));
+        var tasks = extracted.Select(async entry =>
+        {
+            await sem.WaitAsync(ct);
+            try
+            {
+                var (idx, name, doc) = entry;
+                progress?.Report(new RecognitionProgress(
+                    total, completed, name, RecognitionStage.Recognizing,
+                    doc.Source == DocumentTextSource.PdfTextLayer ? "文本层直提，正在调用模型识别…" : "OCR 完成，正在调用模型识别…"));
+
+                var receipt = await _recognizer.RecognizeAsync(doc.Text, name, name, ct);
+                var bill = BillFactory.FromReceipt(receipt, name);
+                lock (ingestGate) ingest(bill);
+
+                var ok = bill.Error.Length == 0;
+                var itemMessage = ok
+                    ? $"{bill.BillType.DisplayName()} ¥{bill.Amount:0.00}" + (bill.NeedsReview ? "（需复核）" : "")
+                    : $"识别失败——{bill.Error}";
+                var done = CompleteOne(idx, new RecognitionItemResult(name, ok, bill.NeedsReview, itemMessage, doc.Source.ToString()));
+                progress?.Report(new RecognitionProgress(
+                    total, done, name,
+                    ok ? RecognitionStage.Completed : RecognitionStage.Failed, itemMessage));
+            }
+            finally { sem.Release(); }
+        });
+        await Task.WhenAll(tasks);
+
+        var items = slots.Select(s => s!).ToList();
         return new RecognitionSummary(
-            fileNames.Count,
+            total,
             items.Count(i => i.Success),
             items.Count(i => !i.Success),
             items.Count(i => i.NeedsReview),

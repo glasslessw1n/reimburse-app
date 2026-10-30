@@ -14,8 +14,9 @@ namespace Reimbursement.App;
 public sealed partial class SettingsWindow : Window
 {
     private readonly Workflow _wf;
-    private readonly List<LlmProviderInfo> _providers = LlmProviderInfo.All.ToList();
+    private readonly List<LlmProvider> _providers = LlmProviderInfo.All.ToList();
     private bool _verified;
+    private bool _initializing = true;
 
     public SettingsWindow(Workflow wf)
     {
@@ -47,6 +48,7 @@ public sealed partial class SettingsWindow : Window
         BaseUrlBox.TextChanged += (_, _) => MarkUnverified();
         ApiKeyBox.PasswordChanged += (_, _) => MarkUnverified();
         ModelBox.TextSubmitted += (_, _) => MarkUnverified();
+        _initializing = false;
     }
 
     private void MarkUnverified()
@@ -67,6 +69,7 @@ public sealed partial class SettingsWindow : Window
 
     private void ProviderBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_initializing) return; // 初始化赋值不联动，避免冲掉已保存值与验证状态
         if (ProviderBox.SelectedIndex < 0 || ProviderBox.SelectedIndex >= _providers.Count) return;
         var p = _providers[ProviderBox.SelectedIndex];
         // 初始化赋值也会触发本事件：仅当与当前值不同才覆盖，避免冲掉用户已保存的自定义值
