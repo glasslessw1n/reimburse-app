@@ -7,6 +7,7 @@ on:
       - feature/windows-core
       - feature/windows-toolkit-merge
       - feature/windows-ux-v2
+      - feature/windows-net10
     tags:
       - "windows-v*"
     paths:
