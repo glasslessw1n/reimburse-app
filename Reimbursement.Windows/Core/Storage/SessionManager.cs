@@ -482,10 +482,16 @@ public sealed class SessionManager
 
     // MARK: - 单张维护
 
-    /// <summary>删除单张票据（按 uid），并重算复核数。</summary>
+    /// <summary>
+    /// 删除单张票据（按 uid），并重算复核数。三处副本（Bills / 各行程 Bills / Local）
+    /// 必须同步删除——只删 Bills 会让已删票据在整合 PDF / 打包里从行程副本中"复活"。
+    /// </summary>
     public void RemoveBill(string uid)
     {
         Manifest.Bills.RemoveAll(b => b.Uid == uid);
+        foreach (var trip in Manifest.Trips)
+            trip.Bills.RemoveAll(b => b.Uid == uid);
+        Manifest.Local.RemoveAll(b => b.Uid == uid);
         Manifest.NeedsReviewCount = Manifest.Bills.Count(b => b.NeedsReview);
         Save();
     }
@@ -680,9 +686,20 @@ public sealed class SessionManager
     }
 }
 
+/// <summary>会话内一段行程的概要（会话列表展开区用）。</summary>
+public sealed record SessionTripBrief(string Dirname, int BillCount, double Amount);
+
 /// <summary>会话摘要（列表页用）。</summary>
 public sealed record SessionSummary(string Sid, string CreatedAt, int BillCount, int TripCount)
 {
+    /// <summary>全部票据金额合计。</summary>
+    public double TotalAmount { get; init; }
+    /// <summary>逐行程概要（整理后才有）。</summary>
+    public IReadOnlyList<SessionTripBrief> TripBriefs { get; init; } = Array.Empty<SessionTripBrief>();
+    /// <summary>本地票据张数与金额合计（整理后才有）。</summary>
+    public int LocalCount { get; init; }
+    public double LocalAmount { get; init; }
+
     /// <summary>创建时间展示：ISO 8601 UTC → 本地时区 "yyyy-MM-dd HH:mm"（解析失败退化为截断替换）。</summary>
     public string CreatedLabel
     {
@@ -717,7 +734,14 @@ public static class Sessions
                 var m = JsonSerializer.Deserialize<SessionManifest>(
                     File.ReadAllText(manifestPath), ReimburseJson.Options);
                 if (m == null) continue;
-                result.Add(new SessionSummary(m.Sid, m.CreatedAt, m.Bills.Count, m.Trips.Count));
+                result.Add(new SessionSummary(m.Sid, m.CreatedAt, m.Bills.Count, m.Trips.Count)
+                {
+                    TotalAmount = m.Bills.Sum(b => b.Amount),
+                    TripBriefs = m.Trips.Select(t => new SessionTripBrief(
+                        t.Dirname, t.Bills.Count, t.Bills.Sum(b => b.Amount))).ToList(),
+                    LocalCount = m.Local.Count,
+                    LocalAmount = m.Local.Sum(b => b.Amount),
+                });
             }
             catch (Exception) { /* 损坏的 manifest 跳过，与 Swift 版一致 */ }
         }

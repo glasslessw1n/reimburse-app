@@ -9,12 +9,17 @@ public sealed record PreflightIssue(PreflightSeverity Severity, string Category,
     string? BillUid, string? SourceFile);
 
 /// <summary>
-/// 提交前检查（打包前体检）：在 finalize 之后运行，用金额+类型+日期交叉校验，
+/// 提交前检查（打包前体检）：用金额+类型+日期交叉校验，
 /// 比 toolkit 只比文件名字母的 check_pairing 更强。检查项：
 /// 识别失败/需复核、金额缺失、水单缺发票、发票缺水单、滴滴单票缺边、行程未见返程、原文件缺失。
+/// 未整理（无行程分组）时明确报"尚未整理"并对全部票据逐张预检，绝不空查误报无问题。
+/// 本类绝不抛异常：字段一律 null 兜底，坏数据降级为检查项而不是崩溃。
 /// </summary>
 public static class Preflight
 {
+    // manifest JSON 可能把非空字符串字段反序列化成 null（旧版本/外部编辑），一律兜底
+    private static string S(string? v) => v ?? "";
+
     public static List<PreflightIssue> Check(SessionManager session, IReadOnlySet<string> homeCities)
     {
         var issues = new List<PreflightIssue>();
@@ -24,12 +29,12 @@ public static class Preflight
         {
             foreach (var b in bills)
             {
-                if (b.Error.Length > 0)
+                if (S(b.Error).Length > 0)
                     issues.Add(new(PreflightSeverity.Error, "识别失败",
                         $"{b.SourceFile}：{b.Error}", b.Uid, b.SourceFile));
                 else if (b.NeedsReview)
                     issues.Add(new(PreflightSeverity.Warning, "需人工复核",
-                        $"{b.SourceFile}：{b.ReviewReason}", b.Uid, b.SourceFile));
+                        $"{b.SourceFile}：{S(b.ReviewReason)}", b.Uid, b.SourceFile));
 
                 if (BillTypeFields.Spec(b.BillType).Required.Contains("amount") && b.Amount <= 0)
                     issues.Add(new(PreflightSeverity.Warning, "金额缺失",
@@ -82,7 +87,7 @@ public static class Preflight
                 var anchors = bills.Where(b => b.BillType is BillType.TrainTicket or BillType.FlightItinerary
                     or BillType.BoardingPass or BillType.SelfDriveSheet).ToList();
                 if (anchors.Count > 0 && !anchors.Any(a =>
-                        homeCities.Contains(a.ToCity.Trim().ToLowerInvariant())))
+                        homeCities.Contains(S(a.ToCity).Trim().ToLowerInvariant())))
                 {
                     issues.Add(new(PreflightSeverity.Warning, "行程未见返程",
                         $"{sectionName}：没有任何票据的到达城市是常驻地，可能缺返程票据", null, null));
@@ -94,6 +99,17 @@ public static class Preflight
             CheckContainer(trip.Bills, trip.Dirname, isTrip: true);
         if (session.Manifest.Local.Count > 0)
             CheckContainer(session.Manifest.Local, "本地", isTrip: false);
+
+        // 未整理状态：行程分组为空但已有识别记录——只查行程等于空查、会误报"无问题"。
+        // 明确报出未整理，并对全部票据照常做逐张检查，让用户一次看到所有问题。
+        if (session.Manifest.Trips.Count == 0 && session.Manifest.Local.Count == 0
+            && session.Manifest.Bills.Count > 0)
+        {
+            issues.Insert(0, new PreflightIssue(PreflightSeverity.Error, "尚未整理",
+                $"已识别 {session.Manifest.Bills.Count} 张票据，但还没有点击「整理」生成行程分组；" +
+                "提交前检查与打包都需要先整理。以下为逐张票据的预检结果。", null, null));
+            CheckContainer(session.Manifest.Bills, "全部票据", isTrip: false);
+        }
 
         return issues;
     }

@@ -11,4 +11,8 @@
     <PackageReference Include="PDFsharp" Version="6.2.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Reimbursement.Core.Tests" />
+  </ItemGroup>
+
 </Project>

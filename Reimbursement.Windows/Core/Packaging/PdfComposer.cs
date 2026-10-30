@@ -96,6 +96,8 @@ public static class PdfComposer
             public XImage? Image;
             /// <summary>每页的视觉尺寸（已按页面 /Rotate 交换宽高）。</summary>
             public List<(double W, double H)> PdfPageDims = new();
+            /// <summary>每页的页面框（MediaBox/CropBox，PDFsharp 同引擎读出）。</summary>
+            public List<PdfPageBoxes> PageBoxes = new();
             /// <summary>每页的内容边框（左上原点）；null = 按整页 fit。仅 /Rotate=0 的页计算。</summary>
             public List<(double X, double Y, double W, double H)?> ContentBoxes = new();
             public void Dispose()
@@ -137,12 +139,13 @@ public static class PdfComposer
                             var w = rotated ? p.Height.Point : p.Width.Point;
                             var h = rotated ? p.Width.Point : p.Height.Point;
                             doc.PdfPageDims.Add((w, h));
+                            doc.PageBoxes.Add(PdfPageBoxes.FromPage(p));
                         }
                         // 内容边框（旋转贴页按内容 fit 用）：仅对无 /Rotate 的页计算，
                         // PdfPig 坐标在旋转页上语义不同，宁可回退整页 fit
                         var allow = new List<bool>();
                         foreach (var p in doc.Pdf.Pages) allow.Add(p.Rotate % 360 == 0);
-                        doc.ContentBoxes = PageContentBox.Compute(path, allow, doc.PdfPageDims);
+                        doc.ContentBoxes = PageContentBox.Compute(path, allow, doc.PdfPageDims, doc.PageBoxes);
                         result = doc;
                     }
                     else if (ext is ".jpg" or ".jpeg" or ".png" or ".bmp")
@@ -214,6 +217,21 @@ public static class PdfComposer
                 srcH = doc.Image.PointHeight;
             }
 
+            // 旋转贴页的内容边框（外扩 10pt 容纳边框线/印章）先做健全性校验：
+            // 边框越界/过小/几乎整页时一律不用，回退整页 fit——宁可发票小，不出空白页。
+            (double X, double Y, double W, double H)? crop = null;
+            if (rotation != 0 && form != null && sourcePage < doc.ContentBoxes.Count
+                && doc.ContentBoxes[sourcePage] is { } content)
+            {
+                const double pad = 10.0;
+                var cx0 = Math.Max(0, content.X - pad);
+                var cy0 = Math.Max(0, content.Y - pad);
+                var cw = Math.Min(srcW, content.X + content.W + pad) - cx0;
+                var ch = Math.Min(srcH, content.Y + content.H + pad) - cy0;
+                if (cw >= 30 && ch >= 30 && cw * ch <= 0.97 * srcW * srcH)
+                    crop = (cx0, cy0, cw, ch);
+            }
+
             double fitW, fitH, boxX, boxY;
             if (rotation == 0)
             {
@@ -225,19 +243,12 @@ public static class PdfComposer
                 if (form != null) _gfx!.DrawImage(form, target);
                 else _gfx!.DrawImage(doc.Image!, target);
             }
-            else if (form != null && sourcePage < doc.ContentBoxes.Count
-                     && doc.ContentBoxes[sourcePage] is { } content)
+            else if (crop is { } cb)
             {
                 // 左旋 90° + 按内容边框 fit：源页是 A4 竖版、发票本体只占一部分时，
                 // 先裁到内容边框再旋转，发票才能占满单元格（整页 fit 会被空白拖小）。
-                // 内容边框外扩 10pt 容纳边框线/印章（文字包围盒通常略小于票面）。
-                const double pad = 10.0;
-                var cx0 = Math.Max(0, content.X - pad);
-                var cy0 = Math.Max(0, content.Y - pad);
-                var cw = Math.Min(srcW, content.X + content.W + pad) - cx0;
-                var ch = Math.Min(srcH, content.Y + content.H + pad) - cy0;
-                var s = Math.Min(rect.W / ch, rect.H / cw);
-                fitW = ch * s; fitH = cw * s;
+                var s = Math.Min(rect.W / cb.H, rect.H / cb.W);
+                fitW = cb.H * s; fitH = cb.W * s;
                 boxX = rect.X + (rect.W - fitW) / 2;
                 boxY = rect.Y + (rect.H - fitH) / 2;
                 var state = _gfx!.Save();
@@ -245,8 +256,8 @@ public static class PdfComposer
                 _gfx.TranslateTransform(boxX + fitW / 2, boxY + fitH / 2);
                 _gfx.RotateTransform(rotation);
                 _gfx.ScaleTransform(s, s);
-                _gfx.TranslateTransform(-(cx0 + cw / 2), -(cy0 + ch / 2));
-                _gfx.DrawImage(form, new XRect(0, 0, srcW, srcH));
+                _gfx.TranslateTransform(-(cb.X + cb.W / 2), -(cb.Y + cb.H / 2));
+                _gfx.DrawImage(form!, new XRect(0, 0, srcW, srcH));
                 _gfx.Restore(state);
             }
             else

@@ -5,6 +5,90 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:Reimbursement.App"
     Title="报销助手">
+    <Window.Resources>
+        <!-- 平铺票据行（未整理时） -->
+        <DataTemplate x:Key="FlatBillTemplate">
+            <Grid Padding="6,4" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Spacing="1">
+                    <TextBlock FontSize="13">
+                        <Run Text="{Binding Title}" FontWeight="SemiBold" />
+                        <Run Text=" " />
+                        <Run Text="{Binding StatusText}" Foreground="{Binding StatusBrush}" />
+                    </TextBlock>
+                    <TextBlock Text="{Binding Subtitle}" FontSize="11" Opacity="0.65"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <Button Grid.Column="1" Content="重试" FontSize="12" Padding="10,3"
+                        Tag="{Binding SourceFile}" IsEnabled="{Binding CanRetry}"
+                        Click="RowRetryBtn_Click" />
+                <Button Grid.Column="2" Content="删除" FontSize="12" Padding="10,3"
+                        Tag="{Binding Uid}" IsEnabled="{Binding CanDelete}"
+                        Click="RowDeleteBtn_Click" />
+            </Grid>
+        </DataTemplate>
+
+        <!-- 分组票据行（整理后）：左侧类别色条 + 类型/金额/日期/城市 -->
+        <DataTemplate x:Key="GroupBillTemplate">
+            <Grid Padding="2,4" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="4" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Background="{Binding TypeBrush}" CornerRadius="2" />
+                <StackPanel Grid.Column="1" Spacing="1">
+                    <TextBlock FontSize="13">
+                        <Run Text="{Binding TypeName}" FontWeight="SemiBold" Foreground="{Binding TypeBrush}" />
+                        <Run Text=" · " />
+                        <Run Text="{Binding AmountText}" FontWeight="SemiBold" />
+                        <Run Text=" " />
+                        <Run Text="{Binding StatusText}" Foreground="{Binding StatusBrush}" />
+                    </TextBlock>
+                    <TextBlock Text="{Binding DateCityText}" FontSize="11.5" Opacity="0.8" />
+                    <TextBlock Text="{Binding Subtitle}" FontSize="11" Opacity="0.55"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <Button Grid.Column="2" Content="重试" FontSize="12" Padding="10,3"
+                        Tag="{Binding SourceFile}" IsEnabled="{Binding CanRetry}"
+                        Click="RowRetryBtn_Click" />
+                <Button Grid.Column="3" Content="删除" FontSize="12" Padding="10,3"
+                        Tag="{Binding Uid}" IsEnabled="{Binding CanDelete}"
+                        Click="RowDeleteBtn_Click" />
+            </Grid>
+        </DataTemplate>
+
+        <!-- 行程分组标题行（点击展开/收起） -->
+        <DataTemplate x:Key="TripHeaderTemplate">
+            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                    Background="Transparent" BorderThickness="0" Padding="6,6"
+                    Tag="{Binding GroupKey}" Click="GroupToggleBtn_Click">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="{Binding ToggleGlyph}" FontSize="12"
+                               VerticalAlignment="Center" Opacity="0.7" />
+                    <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="13.5"
+                               FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Text="{Binding Subtitle}" FontSize="12"
+                               Opacity="0.75" VerticalAlignment="Center" />
+                </Grid>
+            </Button>
+        </DataTemplate>
+
+        <local:BillTemplateSelector x:Key="BillSelector"
+            FlatTemplate="{StaticResource FlatBillTemplate}"
+            GroupTemplate="{StaticResource GroupBillTemplate}"
+            HeaderTemplate="{StaticResource TripHeaderTemplate}" />
+    </Window.Resources>
     <Grid Padding="16" ColumnSpacing="16" RowSpacing="12">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="288" />
@@ -43,12 +127,13 @@
             <TextBlock x:Name="Step4Text" Text="4 · 导出" FontSize="13" />
         </StackPanel>
 
-        <!-- 左侧：会话列表 -->
+        <!-- 左侧：会话列表（可展开看行程概要与金额，可删除） -->
         <Grid Grid.Row="2" Grid.Column="0" RowSpacing="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <TextBlock Grid.Row="0" Text="会话" FontSize="14" FontWeight="SemiBold" />
@@ -56,14 +141,62 @@
                     Style="{StaticResource AccentButtonStyle}"
                     HorizontalAlignment="Stretch" Click="NewSessionBtn_Click" />
             <ListBox x:Name="SessionList" Grid.Row="2"
-                     SelectionChanged="SessionList_SelectionChanged" />
+                     SelectionChanged="SessionList_SelectionChanged">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="4,2" />
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Expander HorizontalAlignment="Stretch"
+                                  HorizontalContentAlignment="Stretch" Padding="8,4">
+                            <Expander.Header>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Spacing="1">
+                                        <TextBlock Text="{Binding Title}" FontSize="13"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Subtitle}" FontSize="11"
+                                                   Opacity="0.65" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding TotalText}"
+                                               FontSize="13" FontWeight="SemiBold"
+                                               VerticalAlignment="Center" />
+                                </Grid>
+                            </Expander.Header>
+                            <StackPanel Spacing="6" Margin="2,4,2,2">
+                                <ItemsControl ItemsSource="{Binding Briefs}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" FontSize="12"
+                                                       Opacity="0.85" Margin="0,1" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Content="删除此会话" FontSize="12" Padding="10,4"
+                                        HorizontalAlignment="Left"
+                                        Tag="{Binding Sid}" Click="SessionDeleteBtn_Click" />
+                            </StackPanel>
+                        </Expander>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
             <TextBlock Grid.Row="3" FontSize="11" Opacity="0.55" TextWrapping="Wrap"
-                       Text="每次报销建一个会话。把票据拖进右侧区域即可自动识别，不必先建会话。" />
+                       Text="每次报销建一个会话。点开会话可看行程与金额。把票据拖进右侧区域即可自动识别，不必先建会话。" />
+            <Button x:Name="ClearSessionsBtn" Grid.Row="4" Content="清除全部会话"
+                    FontSize="12" HorizontalAlignment="Left" Opacity="0.75"
+                    Click="ClearSessionsBtn_Click" />
         </Grid>
 
         <!-- 右侧：工作区 -->
         <Grid Grid.Row="2" Grid.Column="1" RowSpacing="10">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -112,38 +245,33 @@
                 <Button x:Name="CancelBtn" Grid.Column="1" Content="取消" Click="CancelBtn_Click" />
             </Grid>
 
-            <!-- 票据列表 -->
-            <ListBox x:Name="BillList" Grid.Row="3">
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <Grid Padding="6,4" ColumnSpacing="10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Spacing="1">
-                                <TextBlock FontSize="13">
-                                    <Run Text="{Binding Title}" FontWeight="SemiBold" />
-                                    <Run Text=" " />
-                                    <Run Text="{Binding StatusText}" Foreground="{Binding StatusBrush}" />
-                                </TextBlock>
-                                <TextBlock Text="{Binding Subtitle}" FontSize="11" Opacity="0.65"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                            <Button Grid.Column="1" Content="重试" FontSize="12" Padding="10,3"
-                                    Tag="{Binding SourceFile}" IsEnabled="{Binding CanRetry}"
-                                    Click="RowRetryBtn_Click" />
-                            <Button Grid.Column="2" Content="删除" FontSize="12" Padding="10,3"
-                                    Tag="{Binding Uid}" IsEnabled="{Binding CanDelete}"
-                                    Click="RowDeleteBtn_Click" />
-                        </Grid>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
+            <!-- 提交前检查结果横幅 -->
+            <Border x:Name="PreflightBanner" Grid.Row="3" CornerRadius="8" Padding="12,8"
+                    Background="#1E7B4F" Visibility="Collapsed">
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="PreflightText" Grid.Column="0" Foreground="White"
+                               FontSize="12.5" VerticalAlignment="Center" TextWrapping="Wrap" />
+                    <Button Grid.Column="1" Content="关闭" Click="PreflightCloseBtn_Click" />
+                </Grid>
+            </Border>
+
+            <!-- 票据列表（未整理=平铺；整理后=按行程分组，可展开/收起，类别分色） -->
+            <ListBox x:Name="BillList" Grid.Row="4"
+                     ItemTemplateSelector="{StaticResource BillSelector}">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="4,1" />
+                    </Style>
+                </ListBox.ItemContainerStyle>
             </ListBox>
 
             <!-- 诊断日志（可折叠） -->
-            <Expander x:Name="LogExpander" Grid.Row="4" Header="诊断日志" HorizontalAlignment="Stretch"
+            <Expander x:Name="LogExpander" Grid.Row="5" Header="诊断日志" HorizontalAlignment="Stretch"
                       HorizontalContentAlignment="Stretch">
                 <TextBox x:Name="LogBox" IsReadOnly="True" AcceptsReturn="True"
                          TextWrapping="Wrap" FontFamily="Consolas" FontSize="12" Height="110" />

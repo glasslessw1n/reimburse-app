@@ -68,6 +68,18 @@ public static class ZipPackager
             throw new PackageException(PackageException.Kind.ZipFailed, $"打包失败：staging 失败：{e.Message}");
         }
 
+        // 完整性校验：staging 里的票据文件数（不含明细 Excel）必须等于
+        // manifest 行程+本地的票据数——少了就是有票据被漏装，宁可报错也不交残缺包。
+        var expected = session.Manifest.Trips.Sum(t => t.Bills.Count) + session.Manifest.Local.Count;
+        var actual = Directory.EnumerateFiles(stagingFolder, "*", SearchOption.AllDirectories)
+            .Count(f => !string.Equals(Path.GetFileName(f), "报销明细.xlsx", StringComparison.Ordinal));
+        if (actual < expected)
+        {
+            TryDeleteDir(stagingRoot);
+            throw new PackageException(PackageException.Kind.ZipFailed,
+                $"打包不完整：应有 {expected} 个票据文件，实际只有 {actual} 个（可能有原文件缺失，请重新导入缺失票据）");
+        }
+
         try
         {
             if (File.Exists(zipPath)) File.Delete(zipPath);
@@ -88,8 +100,9 @@ public static class ZipPackager
     /// finalize 之后把 bills **复制**到 trips/{dirname}/{targetFilename}。
     /// 幂等：先清掉上次的 trips/ 再从 originals 复制，originals 全程不动，可重复打包。
     /// 同名冲突后缀从 B 起（B…Z 后转 _1、_2…）；优先用 finalTargetName，否则现算 BuildFilename。
+    /// 返回原文件缺失、未能就位的票据源文件名（调用方决定是警告还是拦截打包）。
     /// </summary>
-    public static void ArrangeFiles(SessionManager session)
+    public static List<string> ArrangeFiles(SessionManager session)
     {
         var root = session.RootDir;
         var originals = Path.Combine(root, "originals");
@@ -97,12 +110,13 @@ public static class ZipPackager
         if (Directory.Exists(tripsDir)) Directory.Delete(tripsDir, recursive: true);
         Directory.CreateDirectory(tripsDir);
 
+        var missing = new List<string>();
         foreach (var trip in session.Manifest.Trips)
         {
             var sub = Path.Combine(tripsDir, trip.Dirname);
             Directory.CreateDirectory(sub);
             foreach (var bill in trip.Bills)
-                CopyBill(bill, originals, sub);
+                if (!CopyBill(bill, originals, sub)) missing.Add(bill.SourceFile);
         }
 
         // 本地：只在有票据时才建目录
@@ -111,14 +125,16 @@ public static class ZipPackager
             var localDir = Path.Combine(tripsDir, "本地");
             Directory.CreateDirectory(localDir);
             foreach (var bill in session.Manifest.Local)
-                CopyBill(bill, originals, localDir);
+                if (!CopyBill(bill, originals, localDir)) missing.Add(bill.SourceFile);
         }
+        return missing;
     }
 
-    private static void CopyBill(BillInfo bill, string originals, string sub)
+    /// <summary>复制一张票据到行程目录；原文件缺失返回 false（不再静默吞掉）。</summary>
+    private static bool CopyBill(BillInfo bill, string originals, string sub)
     {
         var src = Path.Combine(originals, bill.SourceFile);
-        if (!File.Exists(src)) return;
+        if (!File.Exists(src)) return false;
 
         var newName = bill.FinalTargetName.Length > 0
             ? bill.FinalTargetName
@@ -136,6 +152,7 @@ public static class ZipPackager
             suffix++;
         }
         File.Copy(src, Path.Combine(sub, finalName));
+        return true;
     }
 
     private static void CopyRecursive(string src, string dst)

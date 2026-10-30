@@ -163,12 +163,14 @@ public sealed class BillInfoJsonConverter : JsonConverter<BillInfo>
 
     public override void Write(Utf8JsonWriter writer, BillInfo b, JsonSerializerOptions options)
     {
+        // 持久化边界必须 null 宽容：坏数据写成空串/缺省，也不能让整个会话保存崩掉
+        static int Len(string? s) => s?.Length ?? 0;
         writer.WriteStartObject();
         writer.WriteString("uid", b.Uid);
         writer.WriteString("bill_type", b.BillType.ToRaw());
         writer.WritePropertyName("date_mmdds");
         writer.WriteStartArray();
-        foreach (var s in b.DateMMDDs) writer.WriteStringValue(s);
+        foreach (var s in b.DateMMDDs ?? new List<string>()) writer.WriteStringValue(s);
         writer.WriteEndArray();
         writer.WritePropertyName("date_range");
         writer.WriteStartArray();
@@ -177,18 +179,18 @@ public sealed class BillInfoJsonConverter : JsonConverter<BillInfo>
         writer.WriteEndArray();
         writer.WritePropertyName("cities");
         writer.WriteStartArray();
-        foreach (var s in b.Cities) writer.WriteStringValue(s);
+        foreach (var s in b.Cities ?? new List<string>()) writer.WriteStringValue(s);
         writer.WriteEndArray();
-        if (b.FromCity.Length > 0) writer.WriteString("from_city", b.FromCity);
-        if (b.ToCity.Length > 0) writer.WriteString("to_city", b.ToCity);
+        if (Len(b.FromCity) > 0) writer.WriteString("from_city", b.FromCity);
+        if (Len(b.ToCity) > 0) writer.WriteString("to_city", b.ToCity);
         writer.WriteNumber("amount", b.Amount);
         writer.WriteString("source_file", b.SourceFile);
-        if (b.TargetFilename.Length > 0) writer.WriteString("target_filename", b.TargetFilename);
-        if (b.TargetSubdir.Length > 0) writer.WriteString("target_subdir", b.TargetSubdir);
+        if (Len(b.TargetFilename) > 0) writer.WriteString("target_filename", b.TargetFilename);
+        if (Len(b.TargetSubdir) > 0) writer.WriteString("target_subdir", b.TargetSubdir);
         if (b.NeedsReview) writer.WriteBoolean("needs_review", true);
-        if (b.ReviewReason.Length > 0) writer.WriteString("review_reason", b.ReviewReason);
+        if (Len(b.ReviewReason) > 0) writer.WriteString("review_reason", b.ReviewReason);
         writer.WriteNumber("confidence", b.Confidence);
-        var compact = b.Fields.Where(kv => kv.Value != null).ToList();
+        var compact = (b.Fields ?? new Dictionary<string, string?>()).Where(kv => kv.Value != null).ToList();
         if (compact.Count > 0)
         {
             writer.WritePropertyName("fields");
@@ -196,10 +198,10 @@ public sealed class BillInfoJsonConverter : JsonConverter<BillInfo>
             foreach (var (k, v) in compact) writer.WriteString(k, v);
             writer.WriteEndObject();
         }
-        if (b.RawTextSnippet.Length > 0) writer.WriteString("raw_text_snippet", b.RawTextSnippet);
-        if (b.Error.Length > 0) writer.WriteString("error", b.Error);
-        if (b.DidiLetter.Length > 0) writer.WriteString("didi_letter", b.DidiLetter);
-        if (b.FinalTargetName.Length > 0) writer.WriteString("_final_target_name", b.FinalTargetName);
+        if (Len(b.RawTextSnippet) > 0) writer.WriteString("raw_text_snippet", b.RawTextSnippet);
+        if (Len(b.Error) > 0) writer.WriteString("error", b.Error);
+        if (Len(b.DidiLetter) > 0) writer.WriteString("didi_letter", b.DidiLetter);
+        if (Len(b.FinalTargetName) > 0) writer.WriteString("_final_target_name", b.FinalTargetName);
         writer.WriteEndObject();
     }
 }
