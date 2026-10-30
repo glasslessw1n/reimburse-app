@@ -4,6 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <!-- PaddleInference / OpenCvSharp 原生库只有 win-x64 运行时资产；
          固定 RID 让还原与产物布局与最终的 win-x64 自包含应用一致。 -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
