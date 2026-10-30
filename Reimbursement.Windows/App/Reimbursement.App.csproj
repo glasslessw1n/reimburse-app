@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>Reimbursement.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <!-- 自包含部署：.NET 运行时与 Windows App Runtime 一并打包，
+         目标机器零前置（不用预装任何运行时），解压/拷贝即可运行 -->
+    <SelfContained>true</SelfContained>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <Nullable>enable</Nullable>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Reimbursement.App</AssemblyName>
+    <!-- 版本号唯一出处：发布时改这里（+ app.manifest 的 assemblyIdentity），
+         界面标题栏与诊断信息从程序集版本读取。 -->
+    <Version>1.1.0</Version>
+    <!-- 只保留中英资源，砍掉 WinUI/.NET 的 80+ 语种 MUI（评估：单语种用户全然无用） -->
+    <SatelliteResourceLanguages>zh-CN;en-US</SatelliteResourceLanguages>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" />
+    <!-- Velopack：安装（Setup.exe）与增量自动更新（走 GitHub Releases），非打包 WinUI 的推荐路线 -->
+    <PackageReference Include="Velopack" Version="1.2.161" />
+    <!-- 注意：WinUI 的 PRI 任务程序集只随 Visual Studio 的 MSBuild 提供，独立 .NET SDK 不含，
+         因此本工程须用 VS 的 msbuild 构建（见 Reimbursement.Windows/ci/windows.yml），
+         纯 dotnet build 会在 MrtCore.PriGen.targets 报 MSB4062。 -->
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Core\Reimbursement.Core.csproj" />
+    <ProjectReference Include="..\Ocr\Reimbursement.Ocr.csproj" />
+  </ItemGroup>
+</Project>
