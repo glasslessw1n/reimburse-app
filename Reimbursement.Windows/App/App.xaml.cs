@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Velopack;
 
 namespace Reimbursement.App;
 
@@ -7,6 +8,9 @@ public partial class App : Application
 {
     public App()
     {
+        // Velopack 必须在任何窗口创建之前接管安装/更新生命周期事件
+        // （从安装包启动的首次运行、更新后重启都走这里；便携 zip 运行时它自动无操作）。
+        VelopackApp.Build().Run();
         CrashLog.Write("App ctor start");
         UnhandledException += (_, e) =>
         {
@@ -30,6 +34,7 @@ public partial class App : Application
             CrashLog.Write("MainWindow created");
             window.Activate();
             CrashLog.Write("MainWindow activated");
+            _ = window.CheckForAppUpdateAsync(); // 后台静默查更新，不阻塞启动
         }
         catch (Exception ex)
         {

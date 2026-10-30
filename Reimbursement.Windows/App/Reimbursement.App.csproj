@@ -25,6 +25,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.240923002" />
+    <!-- Velopack：安装（Setup.exe）与增量自动更新（走 GitHub Releases），非打包 WinUI 的推荐路线 -->
+    <PackageReference Include="Velopack" Version="1.2.161" />
     <!-- 注意：WinUI 的 PRI 任务程序集只随 Visual Studio 的 MSBuild 提供，独立 .NET SDK 不含，
          因此本工程须用 VS 的 msbuild 构建（见 Reimbursement.Windows/ci/windows.yml），
          纯 dotnet build 会在 MrtCore.PriGen.targets 报 MSB4062。 -->

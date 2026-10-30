@@ -93,3 +93,16 @@ jobs:
         with:
           files: Reimbursement-Windows-*.zip
           generate_release_notes: true
+      # Velopack：同一份产物再打成安装包 + 更新源，挂到同一个 Release。
+      # 用户首次用 Setup.exe 安装后，后续版本自动增量更新，不必再手动下整包。
+      - name: Pack and upload Velopack release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/windows-v')
+        shell: pwsh
+        run: |
+          dotnet tool install -g vpk
+          $dir = "Reimbursement.Windows/App/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64"
+          $version = "${{ github.ref_name }}".Replace("windows-v", "")
+          vpk pack --packId Reimbursement.Windows --packVersion $version --packDir $dir --mainExe Reimbursement.App.exe --packTitle "报销助手"
+          vpk upload github --repoUrl https://github.com/glasslessw1n/reimburse-app --tag ${{ github.ref_name }} --token ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
