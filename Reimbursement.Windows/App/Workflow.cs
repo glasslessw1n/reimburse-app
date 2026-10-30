@@ -60,7 +60,22 @@ public sealed class Workflow
 
     public SessionManager CreateSession() => new(SessionsRoot, Sessions.CreateNewSid());
 
-    public SessionManager OpenSession(string sid) => new(SessionsRoot, sid);
+    public SessionManager OpenSession(string sid)
+    {
+        var session = new SessionManager(SessionsRoot, sid);
+        // 旧版清单迁移：无 finalized 标记但已有行程分组的，视为已整理——
+        // 用当前设置的常驻地播种 HomeCities 并落盘，之后单张删除/替换会整体重新派生，
+        // 不再信任盘上的三份副本（评估 S2 的迁移路径，只跑一次）。
+        var m = session.Manifest;
+        if (!m.Finalized && (m.Trips.Count > 0 || m.Local.Count > 0))
+        {
+            m.Finalized = true;
+            if (m.HomeCities.Count == 0)
+                m.HomeCities = LoadSettings().ExcludeCities;
+            session.Save();
+        }
+        return session;
+    }
 
     /// <summary>删除一个会话（整目录删除，不可恢复；调用方负责确认与当前会话切换）。</summary>
     public void DeleteSession(string sid)

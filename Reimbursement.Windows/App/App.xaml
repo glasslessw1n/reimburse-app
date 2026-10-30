@@ -8,6 +8,17 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+            <!-- 品牌色只许出现在主题资源里（评估 P4：颜色零硬编码进控件），深浅各一份 -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="DropBorderBrush" Color="#E8734A" />
+                    <SolidColorBrush x:Key="DropBackgroundBrush" Color="#14E8734A" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="DropBorderBrush" Color="#F0956F" />
+                    <SolidColorBrush x:Key="DropBackgroundBrush" Color="#26F0956F" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
