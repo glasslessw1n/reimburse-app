@@ -5,7 +5,9 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:Reimbursement.App"
     Title="报销助手">
-    <Window.Resources>
+    <!-- 注意：WinUI 的 Window 没有 Resources（WMC0011），模板挂在根 Grid 上 -->
+    <Grid Padding="16" ColumnSpacing="16" RowSpacing="12">
+        <Grid.Resources>
         <!-- 平铺票据行（未整理时） -->
         <DataTemplate x:Key="FlatBillTemplate">
             <Grid Padding="6,4" ColumnSpacing="10">
@@ -88,8 +90,7 @@
             FlatTemplate="{StaticResource FlatBillTemplate}"
             GroupTemplate="{StaticResource GroupBillTemplate}"
             HeaderTemplate="{StaticResource TripHeaderTemplate}" />
-    </Window.Resources>
-    <Grid Padding="16" ColumnSpacing="16" RowSpacing="12">
+        </Grid.Resources>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="288" />
             <ColumnDefinition Width="*" />
