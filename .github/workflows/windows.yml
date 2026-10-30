@@ -7,6 +7,8 @@ on:
       - feature/windows-core
       - feature/windows-toolkit-merge
       - feature/windows-ux-v2
+    tags:
+      - "windows-v*"
     paths:
       - "Reimbursement.Windows/**"
       - ".github/workflows/windows.yml"
@@ -65,10 +67,42 @@ jobs:
           if (-not $paddle) { throw "产物缺失关键文件: paddle_inference_c.dll" }
           $pdbCount = (Get-ChildItem -Path $dir -Recurse -Filter "*.pdb").Count
           Get-ChildItem -Path $dir -Recurse -Filter "*.pdb" | Remove-Item -Force
-          Write-Host "产物门禁通过；已剔除 $pdbCount 个 PDB"
+          # OpenCV 的视频组件（ffmpeg）OCR 用不到，单个 28MB，剔除。
+          $ffmpeg = Get-ChildItem -Path $dir -Recurse -Filter "opencv_videoio_ffmpeg*.dll"
+          $ffmpeg | Remove-Item -Force
+          Write-Host "产物门禁通过；已剔除 $pdbCount 个 PDB、$($ffmpeg.Count) 个视频组件"
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
           name: Reimbursement-Windows-x64-selfcontained
           path: Reimbursement.Windows/App/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64/
           if-no-files-found: error
+      # 打 windows-v* 标签时把同一份产物压成 zip 发 GitHub Release（永久下载链接，
+      # 不必再进 Actions 慢下 artifact）。版本号与 App csproj 的 <Version> 保持一致。
+      - name: Publish GitHub Release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/windows-v')
+        shell: pwsh
+        run: |
+          $dir = "Reimbursement.Windows/App/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64"
+          $zip = "Reimbursement-Windows-${{ github.ref_name }}.zip"
+          Compress-Archive -Path "$dir/*" -DestinationPath $zip
+          Write-Host "release zip: $zip"
+      - name: Attach zip to release
+        if: startsWith(github.ref, 'refs/tags/windows-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Reimbursement-Windows-*.zip
+          generate_release_notes: true
+      # Velopack：同一份产物再打成安装包 + 更新源，挂到同一个 Release。
+      # 用户首次用 Setup.exe 安装后，后续版本自动增量更新，不必再手动下整包。
+      - name: Pack and upload Velopack release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/windows-v')
+        shell: pwsh
+        run: |
+          dotnet tool install -g vpk
+          $dir = "Reimbursement.Windows/App/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64"
+          $version = "${{ github.ref_name }}".Replace("windows-v", "")
+          vpk pack --packId Reimbursement.Windows --packVersion $version --packDir $dir --mainExe Reimbursement.App.exe --packTitle "报销助手"
+          vpk upload github --repoUrl https://github.com/glasslessw1n/reimburse-app --tag ${{ github.ref_name }} --token ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
