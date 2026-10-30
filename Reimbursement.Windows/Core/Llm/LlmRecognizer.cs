@@ -66,6 +66,7 @@ public sealed class LlmRecognizer
             if (type == BillType.Other || confidence < 0.7) return null;
             return type;
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception)
         {
             return null;
@@ -82,6 +83,7 @@ public sealed class LlmRecognizer
             var raw = await _client.ChatJsonAsync(LlmPrompts.ExtractSystemPrompt(type), userMsg, ct: ct);
             return Decode(raw, excerpt, sourceFile, recognizedAt);
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception)
         {
             // 抽取失败 → 交给单段全量兜底
@@ -99,12 +101,12 @@ public sealed class LlmRecognizer
         {
             raw = await _client.ChatJsonAsync(LlmPrompts.SystemPrompt, userMsg, ct: ct);
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception e)
         {
-            Console.Error.WriteLine($"[LlmRecognizer] ❌ {sourceFile} LLM 调用失败：{e.Message}");
-            Console.Error.WriteLine($"[LlmRecognizer]    config.baseURL={_client.Config.BaseUrl}");
-            Console.Error.WriteLine($"[LlmRecognizer]    config.model={_client.Config.Model}");
-            Console.Error.WriteLine($"[LlmRecognizer]    ocrText 前 200 字：{(ocrText.Length > 200 ? ocrText[..200] : ocrText)}");
+            // 诊断进 AppLog 文件（旧版写 stderr，WinExe 永远看不见——评估 S4）
+            Diagnostics.AppLog.Error("llm",
+                $"{sourceFile} LLM 调用失败 base={_client.Config.BaseUrl} model={_client.Config.Model}", e);
             return new Receipt(BillType.Other, 0, new Dictionary<string, string?>(),
                 excerpt, recognizedAt, sourceFile, $"LLM 调用失败：{e.Message}");
         }
@@ -126,7 +128,7 @@ public sealed class LlmRecognizer
         }
         catch (Exception e)
         {
-            Console.Error.WriteLine($"[LlmRecognizer] ❌ {sourceFile} Receipt 解析失败：{e.Message}");
+            Diagnostics.AppLog.Error("llm", $"{sourceFile} Receipt 解析失败", e);
             return new Receipt(BillType.Other, 0, new Dictionary<string, string?>(),
                 excerpt, recognizedAt, sourceFile, $"Receipt 解析失败：{e.Message}");
         }

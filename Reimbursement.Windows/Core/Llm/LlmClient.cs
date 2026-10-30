@@ -126,7 +126,11 @@ public sealed class LlmClient
         throw lastError ?? LlmException.InvalidResponse();
     }
 
-    /// <summary>调 LLM 拿 JSON 对象（自动剥 markdown 代码块）；整体失败重试 maxRetries 次（退避 1.5s×(n+1)）。</summary>
+    /// <summary>
+    /// 调 LLM 拿 JSON 对象（自动剥 markdown 代码块）。重试按错误类型分级（评估 H3）：
+    /// 用户取消永不重试、直接上抛；HTTP 4xx（除 408/429）是永久错误不重试；
+    /// 429/5xx/超时/网络错误才退避重试（1.5s×(n+1)），最多 maxRetries 次。
+    /// </summary>
     public async Task<JsonElement> ChatJsonAsync(string system, string user,
         int maxRetries = 2, CancellationToken ct = default)
     {
@@ -138,8 +142,13 @@ public sealed class LlmClient
                 var content = await ChatAsync(system, user, ct: ct);
                 return JsonObjectExtractor.ExtractFirstJsonObject(content);
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw; // 取消不被吞（旧版会被 catch-all 转入重试，点取消还要再挣扎一轮）
+            }
             catch (Exception e)
             {
+                if (!IsRetryable(e)) throw;
                 lastError = e;
                 if (attempt < maxRetries)
                     await Task.Delay(TimeSpan.FromSeconds(1.5 * (attempt + 1)), ct);
@@ -147,6 +156,17 @@ public sealed class LlmClient
         }
         throw LlmException.AllRetriesFailed(lastError?.Message ?? "unknown");
     }
+
+    private static bool IsRetryable(Exception e) => e switch
+    {
+        LlmException { ErrorKind: LlmException.Kind.NotConfigured } => false,
+        LlmException { ErrorKind: LlmException.Kind.Http, HttpStatus: var s } =>
+            s == 408 || s == 429 || s >= 500,
+        LlmException => true,               // 响应/解析类问题换一次调用可能恢复
+        TaskCanceledException => true,      // 单次超时（非用户取消，已在上面拦截）
+        HttpRequestException => true,
+        _ => true,
+    };
 
     /// <summary>拉模型列表（GET /models，超时 15s）。</summary>
     public async Task<List<string>> ListModelsAsync(CancellationToken ct = default)
