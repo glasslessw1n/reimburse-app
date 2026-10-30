@@ -30,12 +30,12 @@ jobs:
 
   app-build:
     name: WinUI app build
-    # 必须用 VS2022 的 msbuild 构建：WinUI 的 PRI 任务程序集
-    # （Microsoft.Build.Packaging.Pri.Tasks.dll）只随 Visual Studio 提供，
-    # 独立 .NET SDK 里没有，dotnet build 必然在 MrtCore.PriGen.targets 报
-    # MSB4062（SDK 8/10、windows-2022/latest 均已实测）。msbuild 的
-    # MSBuildExtensionsPath 指向 VS 安装目录，路径才能解析。
-    runs-on: windows-2022
+    # 必须用 VS 的 msbuild 构建：WinUI 的 PRI 任务程序集只随 Visual Studio 提供，
+    # 独立 .NET SDK 里没有，dotnet build 必然在 MrtCore.PriGen.targets 报 MSB4062。
+    # .NET 10 变体必须用 windows-latest（VS2026 / MSBuild 18）：SDK 10.0.403 要求
+    # MSBuild ≥ 18.0.0，windows-2022 的 VS2022 只有 MSBuild 17.14，Restore 阶段即
+    # MSB4236 失败（CI #21 实证）。主线 .NET 8 变体仍钉 windows-2022，勿混淆。
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
