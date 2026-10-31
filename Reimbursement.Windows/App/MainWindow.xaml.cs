@@ -162,9 +162,9 @@ public sealed partial class MainWindow : Window
         var title = failed || b.Amount <= 0
             ? b.SourceFile
             : $"{b.BillType.DisplayName()} · ¥{b.Amount:0.00}";
-        var detail = failed ? b.Error
+        var detail = (failed ? b.Error
             : b.NeedsReview ? b.ReviewReason
-            : string.Join(" ", b.Cities) + ((b.DateRange.Start ?? "").Length > 0 ? $" · {b.DateRange.Start}" : "");
+            : string.Join(" ", b.Cities) + ((b.DateRange.Start ?? "").Length > 0 ? $" · {b.DateRange.Start}" : "")) ?? "";
         return new BillRow
         {
             SourceFile = b.SourceFile,
