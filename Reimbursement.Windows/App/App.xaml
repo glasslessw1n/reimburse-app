@@ -13,10 +13,15 @@
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="DropBorderBrush" Color="#E8734A" />
                     <SolidColorBrush x:Key="DropBackgroundBrush" Color="#14E8734A" />
+                    <!-- 列表区白色毛玻璃：半透明白盖在 Mica 上，比系统默认灰底更轻 -->
+                    <SolidColorBrush x:Key="GlassFillBrush" Color="#9AFFFFFF" />
+                    <SolidColorBrush x:Key="GlassStrokeBrush" Color="#12000000" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="DropBorderBrush" Color="#F0956F" />
                     <SolidColorBrush x:Key="DropBackgroundBrush" Color="#26F0956F" />
+                    <SolidColorBrush x:Key="GlassFillBrush" Color="#24FFFFFF" />
+                    <SolidColorBrush x:Key="GlassStrokeBrush" Color="#1FFFFFFF" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>

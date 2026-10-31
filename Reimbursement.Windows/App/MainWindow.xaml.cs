@@ -1,11 +1,13 @@
 using System.Collections.ObjectModel;
 using System.Text;
 using Microsoft.UI;
+using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Reimbursement.Core.Llm;
 using Reimbursement.Core.Models;
 using Reimbursement.Core.Recognition;
@@ -13,6 +15,8 @@ using Reimbursement.Core.Storage;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
 using Windows.Storage;
+using Windows.System;
+using Windows.UI.Core;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 using Color = Windows.UI.Color;
@@ -94,6 +98,12 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? _recognizeCts;
     private bool _finalized;
     private RecognitionSummary? _lastSummary;
+    /// <summary>界面状态（窗口位置/大小 + 使用说明已读），关闭时落盘。</summary>
+    private UiState _ui = new();
+    /// <summary>进度条平滑动画：识别是整张跳变的，显示值用定时器向目标值缓动。</summary>
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _progressTimer;
+    private double _progressTarget;
+    private bool _dragHovering;
 
     private static readonly Brush Green = new SolidColorBrush(Colors.SeaGreen);
     private static readonly Brush Orange = new SolidColorBrush(Colors.DarkOrange);
@@ -178,16 +188,50 @@ public sealed partial class MainWindow : Window
         CrashLog.Write("MainWindow ctor start");
         InitializeComponent();
         CrashLog.Write("MainWindow InitializeComponent done");
-        // Fluent 基线：Mica 材质 + 内容延伸进标题栏 + 初始/最小尺寸（评估 P4）
+        // Fluent 基线：Mica 材质 + 内容延伸进标题栏（评估 P4）
         SystemBackdrop = new MicaBackdrop();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBarGrid);
-        AppWindow.Resize(new SizeInt32(1240, 800));
+        // 窗口尺寸（1.3.0）：AppWindow 收物理像素，必须按 DPI 折算设计尺寸，否则高分屏下窗口显小；
+        // 优先恢复上次关闭时的位置/大小（ui-state.json），没有或已不在屏幕内才用默认尺寸居中。
+        var hwnd = WindowNative.GetWindowHandle(this);
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
-            presenter.PreferredMinimumWidth = 980;   // AppSDK 2.x 已有此 API（1.6 没有，见主线 CI #17）
-            presenter.PreferredMinimumHeight = 640;
+            presenter.PreferredMinimumWidth = DpiHelper.Px(hwnd, 1060);   // AppSDK 2.x 已有此 API（1.6 没有，见主线 CI #17）
+            presenter.PreferredMinimumHeight = DpiHelper.Px(hwnd, 700);
         }
+        _ui = UiState.Load(_wf.DataDir);
+        if (_ui.FitsOnScreen())
+        {
+            AppWindow.Move(new PointInt32(_ui.X!.Value, _ui.Y!.Value));
+            AppWindow.Resize(new SizeInt32(_ui.W!.Value, _ui.H!.Value));
+            if (_ui.Maximized && AppWindow.Presenter is OverlappedPresenter op) op.Maximize();
+        }
+        else
+        {
+            var w = DpiHelper.Px(hwnd, 1300);
+            var h = DpiHelper.Px(hwnd, 860);
+            AppWindow.Resize(new SizeInt32(w, h));
+            var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+            AppWindow.Move(new PointInt32(
+                work.X + Math.Max(0, (work.Width - w) / 2),
+                work.Y + Math.Max(0, (work.Height - h) / 2)));
+        }
+        try
+        {
+            AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
+        }
+        catch
+        {
+            // 图标缺失不拦启动（资产未就位时 exe 图标兜底）
+        }
+        Closed += MainWindow_Closed;
+        // 快捷键走 KeyDown 而非声明式 KeyboardAccelerator：后者会让悬停任意位置弹快捷键提示
+        RootGrid.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(Root_KeyDown), true);
+        RootGrid.Loaded += (_, _) =>
+        {
+            if (!_ui.HelpSeen) HelpTip.IsOpen = true; // 首次启动自动展示一次使用说明
+        };
         var version = typeof(MainWindow).Assembly.GetName().Version;
         VersionLabel.Text = version != null ? $"v{version.Major}.{version.Minor}.{version.Build}" : "";
         BillList.ItemsSource = _items;
@@ -346,17 +390,64 @@ public sealed partial class MainWindow : Window
     private void ExportSplit_Click(SplitButton sender, SplitButtonClickEventArgs args) =>
         ZipBtn_Click(sender, new RoutedEventArgs());
 
-    private void AccelImport_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    /// <summary>
+    /// 快捷键（Ctrl+O 导入 / Ctrl+Enter 主操作）。用 KeyDown 手工判定，不用声明式
+    /// KeyboardAccelerator——后者挂在容器上会让鼠标悬停窗口任意位置都弹 "Ctrl+O" 提示。
+    /// </summary>
+    private void Root_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        args.Handled = true;
-        if (!_busy) ImportBtn_Click(sender, new RoutedEventArgs());
+        var ctrl = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
+            .HasFlag(CoreVirtualKeyStates.Down);
+        if (!ctrl || _busy) return;
+        if (e.Key == VirtualKey.O)
+        {
+            e.Handled = true;
+            ImportBtn_Click(this, new RoutedEventArgs());
+        }
+        else if (e.Key == VirtualKey.Enter)
+        {
+            e.Handled = true;
+            PrimaryBtn_Click(this, new RoutedEventArgs());
+        }
     }
 
-    private void AccelPrimary_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    /// <summary>关闭时记住窗口矩形（最大化时只记状态，保留上次的普通矩形供还原后使用）。</summary>
+    private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
-        args.Handled = true;
-        if (!_busy) PrimaryBtn_Click(sender, new RoutedEventArgs());
+        var maximized = AppWindow.Presenter is OverlappedPresenter p
+            && p.State == OverlappedPresenterState.Maximized;
+        _ui.Maximized = maximized;
+        if (!maximized)
+        {
+            _ui.X = AppWindow.Position.X;
+            _ui.Y = AppWindow.Position.Y;
+            _ui.W = AppWindow.Size.Width;
+            _ui.H = AppWindow.Size.Height;
+        }
+        _ui.Save(_wf.DataDir);
     }
+
+    private void HelpBtn_Click(object sender, RoutedEventArgs e) => HelpTip.IsOpen = true;
+
+    private void HelpTip_Closed(TeachingTip sender, TeachingTipClosedEventArgs args)
+    {
+        if (_ui.HelpSeen) return;
+        _ui.HelpSeen = true;
+        _ui.Save(_wf.DataDir);
+    }
+
+    /// <summary>拖放悬停反馈：拖放区图标呼吸缩放（整窗与拖放区共用一套视觉状态）。</summary>
+    private void SetDragVisual(bool on)
+    {
+        if (on == _dragHovering) return;
+        _dragHovering = on;
+        var key = on ? "DragPulseIn" : "DragPulseOut";
+        (RootGrid.Resources[key] as Storyboard)?.Begin();
+    }
+
+    private void Root_DragLeave(object sender, DragEventArgs e) => SetDragVisual(false);
+
+    private void DropZone_DragLeave(object sender, DragEventArgs e) => SetDragVisual(false);
 
     private bool RequireSession()
     {
@@ -623,11 +714,13 @@ public sealed partial class MainWindow : Window
         {
             e.AcceptedOperation = DataPackageOperation.Copy;
             e.DragUIOverride.Caption = "松开导入并自动识别";
+            SetDragVisual(true);
         }
     }
 
     private async void DropZone_Drop(object sender, DragEventArgs e)
     {
+        SetDragVisual(false);
         e.Handled = true; // 阻止冒泡到根 Grid 造成重复导入
         if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
         var items = await e.DataView.GetStorageItemsAsync();
@@ -642,11 +735,13 @@ public sealed partial class MainWindow : Window
         {
             e.AcceptedOperation = DataPackageOperation.Copy;
             e.DragUIOverride.Caption = "松开导入并自动识别";
+            SetDragVisual(true);
         }
     }
 
     private async void Root_Drop(object sender, DragEventArgs e)
     {
+        SetDragVisual(false);
         if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
         var items = await e.DataView.GetStorageItemsAsync();
         var paths = items.OfType<StorageFile>().Select(f => f.Path).Where(p => p.Length > 0).ToList();
@@ -708,6 +803,28 @@ public sealed partial class MainWindow : Window
         await RecognizeFilesAsync(pending);
     }
 
+    /// <summary>进度条平滑：每 16ms 把显示值向目标值缓动一段，避免整张跳变的生硬感（1.3.0 动效）。</summary>
+    private void StartProgressSmoother()
+    {
+        if (_progressTimer == null)
+        {
+            _progressTimer = DispatcherQueue.CreateTimer();
+            _progressTimer.Interval = TimeSpan.FromMilliseconds(16);
+            _progressTimer.Tick += (_, _) =>
+            {
+                var diff = _progressTarget - ProgressBar.Value;
+                if (diff <= 0.001)
+                {
+                    _progressTimer?.Stop();
+                    return;
+                }
+                var next = ProgressBar.Value + Math.Max(0.12, diff * 0.3);
+                ProgressBar.Value = Math.Min(next, _progressTarget);
+            };
+        }
+        if (!_progressTimer.IsRunning) _progressTimer.Start();
+    }
+
     private async Task RecognizeFilesAsync(IReadOnlyList<string> names)
     {
         if (_session == null || names.Count == 0) return;
@@ -722,6 +839,9 @@ public sealed partial class MainWindow : Window
         ProgressArea.Visibility = Visibility.Visible;
         ProgressBar.Maximum = names.Count;
         ProgressBar.Value = 0;
+        _progressTarget = 0;
+        ProgressSpinner.IsActive = true;
+        StartProgressSmoother();
         ProgressText.Text = $"准备识别 {names.Count} 张…";
         SetBusy(true);
         _recognizeCts = new CancellationTokenSource();
@@ -729,7 +849,8 @@ public sealed partial class MainWindow : Window
         var progress = new Progress<RecognitionProgress>(p =>
         {
             ProgressBar.Maximum = Math.Max(1, p.Total);
-            ProgressBar.Value = p.Completed;
+            _progressTarget = p.Completed; // 显示值由平滑定时器缓动过去，不直接跳变
+            StartProgressSmoother();
             ProgressText.Text = $"{p.Completed}/{p.Total} · {p.FileName} · {p.Message}";
             if (p.Stage is RecognitionStage.Completed or RecognitionStage.Failed)
                 RefreshDetail();
@@ -752,6 +873,9 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
+            _progressTimer?.Stop();
+            ProgressBar.Value = _progressTarget;
+            ProgressSpinner.IsActive = false;
             ProgressArea.Visibility = Visibility.Collapsed;
             SetBusy(false);
             _recognizeCts.Dispose();
@@ -921,7 +1045,7 @@ public sealed partial class MainWindow : Window
             _settingsWindow.Activate();
             return;
         }
-        _settingsWindow = new SettingsWindow(_wf);
+        _settingsWindow = new SettingsWindow(_wf, AppWindow.Position, AppWindow.Size);
         _settingsWindow.Closed += (_, _) =>
         {
             _settingsWindow = null;
