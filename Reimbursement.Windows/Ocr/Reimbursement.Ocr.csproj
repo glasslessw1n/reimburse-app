@@ -8,6 +8,9 @@
     <!-- PaddleInference / OpenCvSharp 原生库只有 win-x64 运行时资产；
          固定 RID 让还原与产物布局与最终的 win-x64 自包含应用一致。 -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- CA1416（平台可用性标注）：本工程只随 Windows 版发行（原生运行时即 win-x64），
+         PDFtoImage 等 API 的跨平台提醒不适用，关掉免得淹没真警告。 -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
