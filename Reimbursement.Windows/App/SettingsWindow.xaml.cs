@@ -46,10 +46,10 @@ public sealed partial class SettingsWindow : Window
         // 居中于主窗口（无主窗口信息时居中于主屏工作区），并夹进工作区防溢出
         var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
         int x, y;
-        if (ownerPos is { } p && ownerSize is { } s)
+        if (ownerPos is { } rp && ownerSize is { } rs)
         {
-            x = p.X + (s.Width - w) / 2;
-            y = p.Y + (s.Height - h) / 2;
+            x = rp.X + (rs.Width - w) / 2;
+            y = rp.Y + (rs.Height - h) / 2;
         }
         else
         {
