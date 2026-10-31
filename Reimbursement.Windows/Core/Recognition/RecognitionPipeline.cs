@@ -58,10 +58,12 @@ public static class BillFactory
 }
 
 /// <summary>
-/// 识别管线（评估 H3 分段并行）：两段推进——
-/// 第一段文本提取严格串行（本地 PaddleOCR 非线程安全，且渲染/OCR 都是 CPU 活）；
-/// 第二段 LLM 识别是网络等待，有界并发（默认 3）重叠往返，汇总顺序仍按输入序。
-/// ingest 回调（会话落盘）非线程安全，并发段内串行化调用。
+/// 识别管线（评估 H3 分段并行，v1.3.2 改流水线推进）：
+/// 文本提取严格串行（本地 PaddleOCR 非线程安全，且渲染/OCR 都是 CPU 活）；
+/// 每提取完一张，立即启动它的 LLM 识别任务（网络等待，有界并发默认 3），
+/// 与后续文件的提取重叠进行。旧实现是"全部提取完才开始 LLM"——批量里有扫描件时
+/// 提取段耗时很长而完成数恒为 0，界面看起来像死循环（用户实测反馈）。
+/// ingest 回调（会话落盘）非线程安全，并发段内串行化调用；汇总顺序仍按输入序。
 /// 文本提取失败也会登记一张带 error 的 BillInfo，让 UI 能展示失败行并提供单张重试。
 /// </summary>
 public sealed class RecognitionPipeline
@@ -93,43 +95,16 @@ public sealed class RecognitionPipeline
             return Interlocked.Increment(ref completed);
         }
 
-        // 第一段：串行提取文本（OCR/渲染不并发）
-        var extracted = new List<(int Idx, string Name, DocumentTextResult Doc)>();
-        for (var i = 0; i < total; i++)
-        {
-            var name = fileNames[i];
-            ct.ThrowIfCancellationRequested();
-            progress?.Report(new RecognitionProgress(
-                total, completed, name, RecognitionStage.ExtractingText, "正在提取文本…"));
-
-            var doc = await _textProvider.ExtractAsync(pathOf(name), ct);
-            if (!doc.HasUsableText)
-            {
-                var message = doc.Message.Length > 0 ? doc.Message : "未提取到可用文本";
-                var failed = new BillInfo(BillType.Other, 0, name)
-                {
-                    Confidence = 0,
-                    Error = message,
-                    NeedsReview = true,
-                    ReviewReason = "文本提取失败，可重试或检查 OCR 设置",
-                };
-                lock (ingestGate) ingest(failed);
-                CompleteOne(i, new RecognitionItemResult(name, false, true, message, doc.Source.ToString()));
-                progress?.Report(new RecognitionProgress(
-                    total, completed, name, RecognitionStage.Failed, message));
-                continue;
-            }
-            extracted.Add((i, name, doc));
-        }
-
-        // 第二段：LLM 有界并发（ingest 与进度计数串行化）
+        // 流水线推进：提取串行；每提取完一张立即挂上它的 LLM 任务（有界并发），
+        // LLM 的网络等待与后续提取的 CPU 时间重叠，完成数从第一张起就真实递增。
         using var sem = new SemaphoreSlim(Math.Max(1, llmConcurrency));
-        var tasks = extracted.Select(async entry =>
+        var tasks = new List<Task>();
+
+        async Task RunLlmAsync(int idx, string name, DocumentTextResult doc)
         {
             await sem.WaitAsync(ct);
             try
             {
-                var (idx, name, doc) = entry;
                 progress?.Report(new RecognitionProgress(
                     total, completed, name, RecognitionStage.Recognizing,
                     doc.Source == DocumentTextSource.PdfTextLayer ? "文本层直提，正在调用模型识别…" : "OCR 完成，正在调用模型识别…"));
@@ -148,7 +123,44 @@ public sealed class RecognitionPipeline
                     ok ? RecognitionStage.Completed : RecognitionStage.Failed, itemMessage));
             }
             finally { sem.Release(); }
-        });
+        }
+
+        try
+        {
+            for (var i = 0; i < total; i++)
+            {
+                var name = fileNames[i];
+                ct.ThrowIfCancellationRequested();
+                progress?.Report(new RecognitionProgress(
+                    total, completed, name, RecognitionStage.ExtractingText, "正在提取文本…"));
+
+                var doc = await _textProvider.ExtractAsync(pathOf(name), ct);
+                if (!doc.HasUsableText)
+                {
+                    var message = doc.Message.Length > 0 ? doc.Message : "未提取到可用文本";
+                    var failed = new BillInfo(BillType.Other, 0, name)
+                    {
+                        Confidence = 0,
+                        Error = message,
+                        NeedsReview = true,
+                        ReviewReason = "文本提取失败，可重试或检查 OCR 设置",
+                    };
+                    lock (ingestGate) ingest(failed);
+                    CompleteOne(i, new RecognitionItemResult(name, false, true, message, doc.Source.ToString()));
+                    progress?.Report(new RecognitionProgress(
+                        total, completed, name, RecognitionStage.Failed, message));
+                    continue;
+                }
+                tasks.Add(RunLlmAsync(i, name, doc));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 取消时先排空已启动的 LLM 任务（它们同样观察 ct，会很快收尾），再向上抛，
+            // 免得游离任务在本批结束后仍在往会话里写。
+            try { await Task.WhenAll(tasks); } catch { /* 排空期的异常以取消为准 */ }
+            throw;
+        }
         await Task.WhenAll(tasks);
 
         var items = slots.Select(s => s!).ToList();

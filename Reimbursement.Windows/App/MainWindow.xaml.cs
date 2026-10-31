@@ -828,6 +828,14 @@ public sealed partial class MainWindow : Window
     private async Task RecognizeFilesAsync(IReadOnlyList<string> names)
     {
         if (_session == null || names.Count == 0) return;
+        // 重入守卫：批量识别进行中，拖放与行内「重试」仍可点（SetBusy 只禁用工具栏），
+        // 并发两轮会共用 _recognizeCts 字段互相踩踏——取消失效、finally 里 Dispose 到 null
+        // 抛 NullReferenceException（v1.3.2 实测修复）。第二轮直接拒绝并明示。
+        if (_busy)
+        {
+            LogAndShow("正在识别中，请等本批完成或点「取消」后再操作");
+            return;
+        }
         var settings = _wf.LoadSettings();
         if (settings.ApiKey.Length == 0)
         {
@@ -844,7 +852,10 @@ public sealed partial class MainWindow : Window
         StartProgressSmoother();
         ProgressText.Text = $"准备识别 {names.Count} 张…";
         SetBusy(true);
-        _recognizeCts = new CancellationTokenSource();
+        // CTS 用本地变量捕获，字段只作「取消」按钮的入口；finally 只清理属于自己的那一轮，
+        // 双保险防共享字段被其他轮次改动后误 Dispose。
+        var cts = new CancellationTokenSource();
+        _recognizeCts = cts;
 
         var progress = new Progress<RecognitionProgress>(p =>
         {
@@ -858,7 +869,7 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            var summary = await _wf.RunRecognitionAsync(_session, settings, names, progress, _recognizeCts.Token);
+            var summary = await _wf.RunRecognitionAsync(_session, settings, names, progress, cts.Token);
             _lastSummary = summary;
             foreach (var item in summary.Items) Log($"{item.FileName}：{item.Message}");
             ShowSummary(summary);
@@ -878,8 +889,8 @@ public sealed partial class MainWindow : Window
             ProgressSpinner.IsActive = false;
             ProgressArea.Visibility = Visibility.Collapsed;
             SetBusy(false);
-            _recognizeCts.Dispose();
-            _recognizeCts = null;
+            if (ReferenceEquals(_recognizeCts, cts)) _recognizeCts = null;
+            cts.Dispose();
             ResyncFinalized();
             RefreshDetail();
             if (_session != null) RefreshSessions(_session.Sid);
