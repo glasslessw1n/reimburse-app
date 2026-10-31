@@ -1,7 +1,7 @@
 # Reimbursement.Windows
 
 `reimburse-app` 的 Windows 版：医科达售后差旅报销助手（票据识别 → 行程整理 → 检查 → 导出）。
-当前版本 **v1.3.1**（.NET 10 + WinUI 3，自包含发布，目标机零前置）。
+当前版本 **v1.3.2**（.NET 10 + WinUI 3，自包含发布，目标机零前置）。
 选型与设计分析见 `docs/windows-port-analysis` 分支的 `docs/windows-port-analysis.md`。
 
 ## 结构
@@ -72,7 +72,7 @@ dotnet test Reimbursement.Windows\Core.Tests\Reimbursement.Core.Tests.csproj   #
 | 分支 | 状态 | 说明 |
 |---|---|---|
 | `main` | 保留 | macOS Swift 原版，Windows 工作不动它 |
-| `feature/windows-app` | **主线（开发在这里）** | 当前 v1.3.1；本地开发与发版都从这条走 |
+| `feature/windows-app` | **主线（开发在这里）** | 当前 v1.3.2；本地开发与发版都从这条走 |
 | `feature/windows-ux-v2` | 与主线内容一致 | UX v2 时期的载体，已并入主线，保留作对照 |
 | `feature/windows-net10` | 与主线内容一致 | .NET 10 升级验证分支，已转正并入主线，保留作对照 |
 | `feature/windows-core` | 历史，可删 | 一期 Core 移植，内容已全部并入主线 |
