@@ -19,7 +19,7 @@
     <AssemblyName>Reimbursement.App</AssemblyName>
     <!-- 版本号唯一出处：发布时改这里（+ app.manifest 的 assemblyIdentity），
          界面标题栏与诊断信息从程序集版本读取。 -->
-    <Version>1.3.1</Version>
+    <Version>1.3.2</Version>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <!-- 只保留中英资源，砍掉 WinUI/.NET 的 80+ 语种 MUI（评估：单语种用户全然无用） -->
     <SatelliteResourceLanguages>zh-CN;en-US</SatelliteResourceLanguages>
