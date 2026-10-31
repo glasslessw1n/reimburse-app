@@ -1,8 +1,10 @@
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Reimbursement.Core.Llm;
 using Windows.Graphics;
+using WinRT.Interop;
 
 namespace Reimbursement.App;
 
@@ -18,12 +20,45 @@ public sealed partial class SettingsWindow : Window
     private bool _verified;
     private bool _initializing = true;
 
-    public SettingsWindow(Workflow wf)
+    public SettingsWindow(Workflow wf, PointInt32? ownerPos = null, SizeInt32? ownerSize = null)
     {
         _wf = wf;
         InitializeComponent();
         SystemBackdrop = new MicaBackdrop();
-        AppWindow.Resize(new SizeInt32(580, 760));
+        // 尺寸按 DPI 折算（1.3.0）：旧版写死 580×760 物理像素，高分屏下只有约一半大、内容挤成一团。
+        var hwnd = WindowNative.GetWindowHandle(this);
+        var w = DpiHelper.Px(hwnd, 600);
+        var h = DpiHelper.Px(hwnd, 780);
+        AppWindow.Resize(new SizeInt32(w, h));
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.PreferredMinimumWidth = DpiHelper.Px(hwnd, 520);
+            presenter.PreferredMinimumHeight = DpiHelper.Px(hwnd, 560);
+        }
+        try
+        {
+            AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
+        }
+        catch
+        {
+            // 图标缺失不拦窗口
+        }
+        // 居中于主窗口（无主窗口信息时居中于主屏工作区），并夹进工作区防溢出
+        var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+        int x, y;
+        if (ownerPos is { } p && ownerSize is { } s)
+        {
+            x = p.X + (s.Width - w) / 2;
+            y = p.Y + (s.Height - h) / 2;
+        }
+        else
+        {
+            x = work.X + (work.Width - w) / 2;
+            y = work.Y + (work.Height - h) / 2;
+        }
+        x = Math.Clamp(x, work.X, Math.Max(work.X, work.X + work.Width - w));
+        y = Math.Clamp(y, work.Y, Math.Max(work.Y, work.Y + work.Height - h));
+        AppWindow.Move(new PointInt32(x, y));
 
         var settings = _wf.LoadSettings();
         _verified = settings.LlmVerified;
