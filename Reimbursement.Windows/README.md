@@ -1,102 +1,98 @@
 # Reimbursement.Windows
 
-`reimburse-app` 的 Windows 版（.NET 8）。设计与选型见仓库根目录上层的分析文档
-`docs/windows-port-analysis.md`（在 `docs/windows-port-analysis` 分支）。
+`reimburse-app` 的 Windows 版：医科达售后差旅报销助手（票据识别 → 行程整理 → 检查 → 导出）。
+当前版本 **v1.3.0**（.NET 10 + WinUI 3，自包含发布，目标机零前置）。
+选型与设计分析见 `docs/windows-port-analysis` 分支的 `docs/windows-port-analysis.md`。
 
 ## 结构
 
 ```
 Reimbursement.Windows.sln
-├── Core/          平台无关逻辑库（net8.0）——macOS Swift 版逻辑的 1:1 复刻
-│   ├── Models/    BillType/字段规格/Receipt/BillInfo/TripGroup/manifest（JSON 与 Swift 版逐字兼容）
-│   ├── Llm/       OpenAI 兼容客户端、两段式识别、Prompt 生成、Provider 预设、.env 设置
+├── Core/          平台无关业务库（net10.0）——macOS Swift 版逻辑的复刻 + toolkit 能力并入
+│   ├── Models/    BillType/字段规格/Receipt/BillInfo/TripGroup/manifest（JSON 与 Swift 版兼容）
+│   ├── Llm/       OpenAI 兼容客户端、两段式识别管线、Prompt、Provider 预设、DPAPI 加密的设置存储
 │   ├── Trips/     TripResolver 行程切分状态机
-│   ├── Storage/   SessionManager（ingest/finalize/配对/字母序号/文件名生成）与会话目录
-│   └── Packaging/ ExcelBuilder（手写 OOXML）、ZipPackager（进程内打包）
-└── Core.Tests/    xUnit 回归测试——大多由 Swift 测试逐条翻译（TripResolver 决策矩阵等），外加 LLM 编排与端到端冒烟
+│   ├── Storage/   SessionManager（ingest/finalize/配对/文件名生成，manifest 为单一事实源）
+│   ├── Packaging/ ExcelBuilder、ZipPackager、PdfComposer（整合 PDF）、PdfMerger、Preflight
+│   └── Recognition/ 识别管线（提取 → LLM 并发 3 → 回填串行）与文档文本抽象
+├── Ocr/           OCR 适配（net10.0，win-x64）：内置 PaddleOCR（PP-OCRv5 mobile，离线）
+│                  + PDFtoImage（PDFium）逐页渲染；可选 OXR 云端解析；回退链 文本层→OXR→本地 OCR
+├── App/           WinUI 3 桌面壳（net10.0-windows）：Mica 界面、整窗拖放自动识别、设置窗口、
+│                  Velopack 自动更新（GitHub Releases）
+└── Core.Tests/    xUnit 回归测试（82 个，多由 Swift 测试翻译 + 管线/打包端到端）
 ```
 
-后续（各自独立分支）：WinUI 3 桌面壳（`feature/windows-app`）、OCR 引擎选型 spike
-（`feature/windows-ocr-spike`）、toolkit 排版融入（`feature/windows-toolkit-merge`）、MCP 服务（二期）。
+## 本地开发
 
-## 构建与测试
+前置（缺一不可，都是实测过的硬约束）：
+
+- **Visual Studio 2026**（Community 即可），工作负载勾选「.NET 桌面开发」+「Windows 应用程序开发」。
+  不能用 VS2022（.NET 10 SDK 要求 MSBuild ≥ 18），也不能只装独立 .NET SDK 用 `dotnet build`
+  （WinUI 的 PRI 打包任务只随 VS 的 MSBuild 提供）。
+- VS 的 NuGet 程序包源里要有 **nuget.org**（`https://api.nuget.org/v3/index.json`）并勾选，
+  否则还原只查离线包源、所有包报"找不到"。
+- .NET 10 SDK ≥ 10.0.100（VS2026 自带；`global.json` 以 rollForward 方式钉住）。
+
+日常流程：
 
 ```powershell
-dotnet build Reimbursement.Windows.sln
-dotnet test  Reimbursement.Windows.sln
+git clone https://github.com/glasslessw1n/reimburse-app.git
+git checkout feature/windows-app
+# 打开 Reimbursement.Windows\Reimbursement.Windows.sln，配置选 Debug | x64，F5 运行
+dotnet test Reimbursement.Windows\Core.Tests\Reimbursement.Core.Tests.csproj   # 只跑逻辑测试
 ```
 
-Core 与 Core.Tests 均为纯 net8.0，可在 Windows / macOS / Linux 上构建运行；
-只有将来的 WinUI 壳需要 Windows。
+常见坑：
 
-## 数据落盘（与 mac 版同构）
+- 打开解决方案报"找不到指定的 SDK Microsoft.NET.Sdk"：多半是装完 SDK 后 VS 没重启（解析缓存），完全退出 VS 再开。
+- `git pull` 拉到 XAML 大改后出现一半旧一半新的假错（如旧事件处理器缺失、ListBox/ListView 互转失败）：
+  是 `obj` 里残留的旧 XAML 生成代码，删掉各工程的 `obj`、`bin` 重开 VS 即可。
+- 还原报 NU1004（锁文件不一致）：删掉对应工程的 `packages.lock.json` 再还原。
 
-- 配置：`%APPDATA%\Reimbursement\.env`（键名与 mac 版一致，互通）
-- 会话：`%APPDATA%\Reimbursement\sessions\{sid}\{manifest.json, originals\, trips\}`
-- 打包输出：用户 Downloads 目录（经 Known Folder API 获取，不写死路径）
+## 发布
 
-## toolkit 融入（feature/windows-toolkit-merge 分支新增）
+- **版本号唯一出处**：`App/Reimbursement.App.csproj` 的 `<Version>` + `App/app.manifest` 的
+  assemblyIdentity（两者同步改）；Core/Ocr 的 `<Version>` 跟随。标题栏版本读程序集版本。
+- **本地发布版**：VS 切 Release | x64 生成 App 工程，产物在
+  `App\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\`，整文件夹即发布版（可压 zip 分发）。
+  命令行等价：`msbuild Reimbursement.Windows\App\Reimbursement.App.csproj -restore -p:Configuration=Release -p:Platform=x64`。
+- ⚠️ **不要用** VS「发布」向导或 `msbuild -t:Publish`：会漏掉 `Reimbursement.App.pri` 导致启动闪退（实测）。
+- **正式发版（带 Setup 安装包 + 自动更新）**：在 `feature/windows-app` 打标签 `windows-v<版本>` 并推送，
+  CI 自动出 GitHub Release（zip + Velopack Setup.exe 与增量更新源）。已安装的旧版启动时静默检查更新。
+- 构建后会自动清理输出目录里多余的语种 MUI 文件夹（只留 zh-CN/en-US，见 App 工程的
+  `TrimUnusedMuiLanguages` 目标）。
 
-reimburse-toolkit（Python）的核心能力已以 Core 服务形态并入，数据源从"文件名/目录解析"
-换成 app 的会话识别记录（manifest），并修复 toolkit 的已知缺陷：
+## 数据落点
 
-- **PdfComposer**（compose.py 的现代化形态）：「整合 PDF」导出。排版规则与 toolkit
-  一致（A4、边距 20pt、间距 8pt；行程证明页 P1 去+回上下排、交通 3×2、酒店水单整页、
-  酒店发票同页两份、滴滴/餐饮/自驾票据左旋 90° 网格）。实现改为 **矢量贴页**
-  （PDFsharp XPdfForm，文字保持清晰；图片原件按同样 fit 规则贴图）。返回贴页清单
-  （每页放了哪份票据的哪一页、什么规则、什么框）供 UI 预览。修复：①多页文档逐页纳入
-  （toolkit 只渲染第 0 页）②未上 P1 的登机牌进 3×2（toolkit 会整张消失）
-  ③其他类票据走 1×2 兜底排版（toolkit 直接丢弃）。
-- **PdfMerger**（merge.py）：「简单合并 PDF」——按行程顺序逐页矢量合并原件，
-  并补上 merge.py 漏掉的自驾行程单/加油/通行费。非 PDF 原件记入 Skipped。
-- **Preflight**（诊断套件的现代化形态）：「提交前检查」——识别失败/需复核、金额缺失、
-  水单缺发票、发票缺水单、滴滴单票缺边、行程未见返程、原文件缺失；以金额+类型交叉
-  校验，比 toolkit 只比文件名字母的配对检查更强。
-- 依赖新增 PDFsharp 6.2（MIT，进程内处理，无外部进程）。
+`%APPDATA%\Reimbursement.Windows\`：`sessions\`（每会话 manifest.json + 原件/行程）、
+`settings.env`（API Key 经 DPAPI 加密）、`logs\`（按天诊断日志）、`ui-state.json`（窗口位置/使用说明已读）。
 
-MCP 工具层（reimburse_mcp.py 的对应物）按规划放到二期。
+## 分支图
 
-## 与 Swift 版的行为差异（有意为之，详见分析报告 §7）
+| 分支 | 状态 | 说明 |
+|---|---|---|
+| `main` | 保留 | macOS Swift 原版，Windows 工作不动它 |
+| `feature/windows-app` | **主线（开发在这里）** | 当前 v1.3.0；本地开发与发版都从这条走 |
+| `feature/windows-ux-v2` | 与主线内容一致 | UX v2 时期的载体，已并入主线，保留作对照 |
+| `feature/windows-net10` | 与主线内容一致 | .NET 10 升级验证分支，已转正并入主线，保留作对照 |
+| `feature/windows-core` | 历史，可删 | 一期 Core 移植，内容已全部并入主线 |
+| `feature/windows-toolkit-merge` | 历史，可删 | toolkit 并入，内容已全部并入主线 |
+| `docs/windows-port-analysis` | 历史，可删 | 移植分析文档分支 |
 
-- JSON 提取改用字符串感知的括号匹配状态机（Swift 版括号计数不感知字符串内容，字符串里的 `}` 会截错）。
-- 原文件名清洗在 mac 版只防 `/` 的基础上，额外处理 Windows 非法字符 `\ < > : " | ? *`、控制字符与尾随点/空格。
-- ZIP/XLSX 全部进程内生成（替代 mac 的 ditto / /usr/bin/zip 外部进程）。
-- 其余业务规则（TripResolver、酒店配对、滴滴链接、buildFilename、Excel 防双计等）按 Swift 版逐条复刻，并由翻译过来的测试锁定。
+CI（`.github/workflows/windows.yml`）在上述 feature 分支推送时触发：Core 测试（dotnet test）
++ WinUI 构建（windows-latest / VS2026 的 MSBuild）两个 job。仓库内
+`Reimbursement.Windows/ci/windows.yml` 是该工作流的暂存副本，与线上保持一致
+（历史原因：自动化推送无 `.github/workflows` 写权限时由此中转；本地 Git 推送不受此限）。
 
-## UX v2（feature/windows-ux-v2 分支）
+## 沿革与关键决策（细节备查）
 
-针对 v1 实测反馈的六个问题重做：
-
-- **OCR 接入**：新增 `Ocr/` 适配器工程（net8.0，win-x64）。默认内置
-  **PaddleOCR**（Sdcb.PaddleOCR 3.3.1 + PP-OCRv5 中文 mobile 模型，随应用离线分发）；
-  PDF 文本层不足时用 PDFtoImage（PDFium）以 300 DPI 逐页渲染后 OCR，图片票据直接 OCR；
-  OCR 文本块经 `OcrTextFormatter` 按阅读顺序拼装后送 LLM。设置里可切换为
-  **OXR 云端解析**（SoMark，优先云端、失败回退本地 OCR）或关闭 OCR（仅文本层）。
-  Core 侧抽象为 `IDocumentTextProvider / IImageOcrEngine / IPdfPageRenderer`，可单测、可替换。
-- **拖放自动识别**：拖放区常驻；拖入或选择文件后自动导入并立即识别；
-  没有选中会话时自动新建。原「识别待处理」降为补处理/重试入口。
-- **设置页**：模型改为可编辑下拉，支持「拉取模型」与「测试连接」
-  （先拉列表验证地址/Key，再用当前模型发最小对话验证可用性），验证状态持久化，
-  改动地址/模型/Key 后自动回到未验证。
-- **进度与汇总**：识别管线（Core `RecognitionPipeline`）逐张汇报进度事件
-  （总数/完成数/当前文件/阶段），UI 显示进度条与取消按钮；结束后弹出汇总横幅
-  （成功/失败/需复核计数），失败时横幅可一键重试失败项，否则一键进入整理。
-- **界面**：步骤指示（导入→识别→整理检查→导出）、富状态票据行
-  （类型+金额+状态标签+失败/复核原因，单张重试/删除）、品牌橙拖放区、
-  诊断日志折叠收纳。票据行数据以 `manifest.bills` 为权威列表
-  （修复 v1 finalize 前列表为空的问题）。
-- 数据落点以 App `Workflow.cs` 为准：`%APPDATA%\Reimbursement.Windows\`
-  （`sessions/` + `settings.env`），README 旧版路径描述已过时。
-
-## UX v2 实测修复（2026-10-30）
-
-- **完整打包无产物**：`Finalize()` 漏接 `ZipPackager.ArrangeFiles`，`trips/` 永不存在，
-  打包恒抛「行程目录未生成」且错误只进折叠日志。已在 `Finalize` 内补 arrange、
-  `Workflow.ExportZip` 打包前再兜底一遍（幂等），未整理时给出明确提示；
-  整理/检查/导出结果改为自动展开日志区显示。
-- **滴滴发票 2×2 不占版**：真实滴滴发票是 A4 竖版承载、发票本体只占上半页，
-  旋转贴页按整页 fit 被空白拖小。新增 `PageContentBox`（PdfPig 计算文字+图片+
-  可见路径的内容边框，剪切路径不算内容），旋转贴页先裁到内容边框再 fit，
-  2×2 与整页单张均可占满；内容占满整页的票据（行程单等）行为不变。
-- GPU OCR 未做：PaddleOCR 的 CUDA 运行时按显卡架构分包，用户机器是 Intel 核显，
-  无 CUDA 路线，维持 CPU/MKLDNN。
+- **toolkit 并入**：PdfComposer（整合 PDF，矢量贴页）修复了 Python 版三处缺陷——多页文档只取
+  第 0 页、未上行程证明页的登机牌整张消失、其他类票据被丢弃；另有 PdfMerger（合并 PDF）与
+  Preflight（提交前检查：缺发票/水单配对、金额缺失、未见返程等）。
+- **滴滴发票裁版**：滴滴发票本体只占 A4 上半页，按整页贴图会被空白拖小；`PageContentBox`
+  （PdfPig 算内容边框，注意 MediaBox/CropBox 坐标换算）先裁内容再排版。
+- **OCR**：内置 PaddleOCR CPU/MKLDNN 为默认（用户机为 Intel 核显，无 CUDA 路线，GPU 方案搁置）；
+  OXR 仅作可选云端增强（会上传原件，设置里有明示）。
+- **与 Swift 版的有意差异**：JSON 提取用字符串感知的括号匹配；文件名清洗额外处理 Windows
+  非法字符；ZIP/XLSX 进程内生成。其余业务规则按 Swift 版复刻并由翻译测试锁定。
+- **MCP 工具层**：二期设想，未立项。
