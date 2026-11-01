@@ -22,9 +22,9 @@ enum PdfMerger {
         let doc = PDFDocument()
         var idx = 0
         for bill in ordered {
-            for page in try loader.pages(of: bill) {
+            for sourcePage in try loader.pages(of: bill) {
                 // 从源文档取出的页插入新文档时需要复制，避免跨文档引用失效
-                guard let copy = page.copy() as? PDFPage else { continue }
+                guard let copy = sourcePage.page.copy() as? PDFPage else { continue }
                 doc.insert(copy, at: idx)
                 idx += 1
             }

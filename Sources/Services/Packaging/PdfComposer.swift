@@ -3,18 +3,27 @@
 //  报销整理Native
 //
 //  整合 PDF：把一个会话的全部票据按打印排版规则排进 A4 页面（矢量贴页，不光栅化）。
-//  排版规则与 Windows 版 PdfComposer 一致（源自 reimburse-toolkit 的 compose.py，
-//  并修复其三处丢失点：多页文档全纳入、孤张登机牌进证明页、other 类兜底排版）。
+//  规则源自 reimburse-toolkit 的 compose.py 并按实际报销口径修订：
 //
 //  每个行程的组装顺序：
-//    自驾行程单（整页）→ 加油/通行费（2×2 旋转）→ 行程证明页 P1（最早+最晚交通票 1×2）
-//    → 交通票 3×2 → 酒店（水单整页、发票同页两份）→ 滴滴行程单 → 滴滴发票 → 餐饮（2×2 旋转）→ 其他（2×2）
+//    自驾行程单（整页）→ 加油/通行费（发票类分档排版）→ 行程证明页 P1（最早+最晚交通票 1×2）
+//    → 交通票 3×2（已上证明页的登机牌不再重复——登机牌只是行程证明，不是报销凭证）
+//    → 酒店（水单整页后紧跟其配对发票同页两份）→ 滴滴行程单 → 滴滴发票 → 餐饮 → 其他
 //  本地段：通信（1×2）→ 滴滴行程单 → 滴滴发票 → 餐饮 → 其他。
+//
+//  发票类分档排版（滴滴发票 / 餐饮 / 加油通行费 / 其他，四类同规，均为左转 90°）：
+//    1 张 → 不拼版，旋转后整页；2 张 → 旋转后 1×2；≥3 张 → 旋转后 2×2。
 //
 
 import Foundation
 import PDFKit
 import AppKit
+
+/// 一张源页面（可选带内容裁切框，坐标为源页面空间）
+struct SourcePage {
+    var page: PDFPage
+    var crop: CGRect? = nil
+}
 
 enum PdfComposer {
 
@@ -29,16 +38,13 @@ enum PdfComposer {
         }
     }
 
-    // A4 纵向（pt）与版式常量（与 Windows 版一致）
+    // A4 纵向（pt）与版式常量
     static let pageW: CGFloat = 595.28
     static let pageH: CGFloat = 841.89
     static let margin: CGFloat = 20
     static let gap: CGFloat = 8
 
     /// 组成整合 PDF 并返回数据
-    /// - Parameters:
-    ///   - trips/local: finalize 后的行程分组（调用方在未 finalize 时先自行分组）
-    ///   - originalsDir: 原文件目录（按 BillInfo.sourceFile 取文件）
     static func compose(trips: [TripGroup], local: [BillInfo], originalsDir: URL) throws -> Data {
         let loader = SourceLoader(originalsDir: originalsDir)
         var pages: [ComposedPage] = []
@@ -62,7 +68,6 @@ enum PdfComposer {
     private static func composeGroup(
         bills: [BillInfo], isLocal: Bool, loader: SourceLoader, into pages: inout [ComposedPage]
     ) throws {
-        // 各类别（组内排序与 Windows 版一致：交通/餐饮按日期、滴滴按字母、酒店水单在前）
         let byDate: (BillInfo, BillInfo) -> Bool = { ($0.dateRange.start, $0.sourceFile) < ($1.dateRange.start, $1.sourceFile) }
         let transport = bills.filter { [.trainTicket, .flightItinerary, .boardingPass].contains($0.billType) }.sorted(by: byDate)
         let selfDrive = bills.filter { $0.billType == .selfDriveSheet }.sorted(by: byDate)
@@ -79,11 +84,11 @@ enum PdfComposer {
         let other = bills.filter { !handled.contains($0.billType) }.sorted(by: byDate)
 
         if isLocal {
-            // 本地段：通信 1×2 → 滴滴 → 餐饮 → 其他（酒店发票在本地归其他兜底）
+            // 本地段：通信 1×2 → 滴滴 → 餐饮/其他（发票类分档）→ 本地酒店发票归其他兜底
             try grid(bills: telecom, rows: 1, cols: 2, rotate: false, loader: loader, into: &pages)
             try didiSection(trips: didiTrips, invoices: didiInvoices, loader: loader, into: &pages)
-            try grid(bills: dining, rows: 2, cols: 2, rotate: true, loader: loader, into: &pages)
-            try grid(bills: other + hotelInvoices, rows: 2, cols: 2, rotate: false, loader: loader, into: &pages)
+            try invoiceGrid(bills: dining, loader: loader, into: &pages)
+            try invoiceGrid(bills: other + hotelInvoices, loader: loader, into: &pages)
             return
         }
 
@@ -91,39 +96,56 @@ enum PdfComposer {
         for b in selfDrive {
             for p in try loader.pages(of: b) { fullPage(p, into: &pages) }
         }
-        // 2. 加油 + 通行费：2×2 旋转
-        try grid(bills: gasToll, rows: 2, cols: 2, rotate: true, loader: loader, into: &pages)
-        // 3. 行程证明页 P1：最早 + 最晚各一（孤张也进，避免在 3×2 被排除后消失）
+        // 2. 加油 + 通行费：发票类分档排版
+        try invoiceGrid(bills: gasToll, loader: loader, into: &pages)
+        // 3. 行程证明页 P1：最早 + 最晚交通票各一（孤张也进，保证不丢）
+        var proofUIDs = Set<String>()
         if !transport.isEmpty {
-            var proof: [PDFPage] = []
-            if let first = try loader.pages(of: transport[0]).first { proof.append(first) }
+            var proof: [SourcePage] = []
+            if let first = try loader.pages(of: transport[0]).first {
+                proof.append(first)
+                proofUIDs.insert(transport[0].uid)
+            }
             if transport.count > 1, let last = try loader.pages(of: transport[transport.count - 1]).first {
                 proof.append(last)
+                proofUIDs.insert(transport[transport.count - 1].uid)
             }
             gridPages(proof, rows: 2, cols: 1, rotate: false, into: &pages)
         }
-        // 4. 交通票：3×2 不旋转（登机牌也在内——与 P1 重复出现是设计如此）
-        try grid(bills: transport, rows: 3, cols: 2, rotate: false, loader: loader, into: &pages)
-        // 5. 酒店：水单整页；发票同页排两份（打印后一份存档一份提交的惯例）
-        for b in folios {
-            for p in try loader.pages(of: b) { fullPage(p, into: &pages) }
-        }
-        for b in hotelInvoices {
-            let ps = try loader.pages(of: b)
-            if let first = ps.first {
-                gridPages([first, first], rows: 2, cols: 1, rotate: false, into: &pages)
+        // 4. 交通票 3×2：已在证明页出现过的登机牌不再重复排
+        //    （登机牌是行程证明而非报销凭证；未上证明页的登机牌仍排，避免漏件）
+        let transportGrid = transport.filter { !($0.billType == .boardingPass && proofUIDs.contains($0.uid)) }
+        try grid(bills: transportGrid, rows: 3, cols: 2, rotate: false, loader: loader, into: &pages)
+        // 5. 酒店：每张水单整页后紧跟它配对的发票（同页两份）；未配对发票排在本组末尾
+        var usedInvoiceUIDs = Set<String>()
+        for folio in folios {
+            for p in try loader.pages(of: folio) { fullPage(p, into: &pages) }
+            if let inv = hotelInvoices.first(where: { $0.pairedFolioUID == folio.uid }) {
+                usedInvoiceUIDs.insert(inv.uid)
+                try placeHotelInvoice(inv, loader: loader, into: &pages)
             }
-            for p in ps.dropFirst() { fullPage(p, into: &pages) }
+        }
+        for inv in hotelInvoices where !usedInvoiceUIDs.contains(inv.uid) {
+            try placeHotelInvoice(inv, loader: loader, into: &pages)
         }
         // 6/7. 滴滴
         try didiSection(trips: didiTrips, invoices: didiInvoices, loader: loader, into: &pages)
-        // 8. 餐饮：2×2 旋转
-        try grid(bills: dining, rows: 2, cols: 2, rotate: true, loader: loader, into: &pages)
-        // 9. 其他：2×2 不旋转兜底（任何类型都不丢）
-        try grid(bills: other, rows: 2, cols: 2, rotate: false, loader: loader, into: &pages)
+        // 8. 餐饮：发票类分档排版
+        try invoiceGrid(bills: dining, loader: loader, into: &pages)
+        // 9. 其他：发票类分档排版兜底（任何类型都不丢）
+        try invoiceGrid(bills: other, loader: loader, into: &pages)
     }
 
-    /// 滴滴段：行程单 1 张整页、多张 1×2 旋转；发票恒旋转，1 张整页、多张 2×2（带内容框裁切）
+    /// 酒店发票：首页同页排两份，其余页整页
+    private static func placeHotelInvoice(_ bill: BillInfo, loader: SourceLoader, into pages: inout [ComposedPage]) throws {
+        let ps = try loader.pages(of: bill)
+        if let first = ps.first {
+            gridPages([first, first], rows: 2, cols: 1, rotate: false, into: &pages)
+        }
+        for p in ps.dropFirst() { fullPage(p, into: &pages) }
+    }
+
+    /// 滴滴段：行程单 1 张整页、多张 1×2 旋转；发票走发票类分档（带内容框裁切）
     private static func didiSection(
         trips: [BillInfo], invoices: [BillInfo], loader: SourceLoader, into pages: inout [ComposedPage]
     ) throws {
@@ -132,19 +154,29 @@ enum PdfComposer {
         } else if trips.count > 1 {
             try grid(bills: trips, rows: 2, cols: 1, rotate: true, loader: loader, into: &pages)
         }
-        if invoices.count == 1 {
-            for p in try loader.pages(of: invoices[0], cropToContent: true) {
+        try invoiceGrid(bills: invoices, loader: loader, cropToContent: true, into: &pages)
+    }
+
+    /// 发票类分档排版（左转 90°）：1 张整页旋转；2 张 1×2 旋转；≥3 张 2×2 旋转
+    private static func invoiceGrid(
+        bills: [BillInfo], loader: SourceLoader, cropToContent: Bool = false, into pages: inout [ComposedPage]
+    ) throws {
+        guard !bills.isEmpty else { return }
+        if bills.count == 1 {
+            for p in try loader.pages(of: bills[0], cropToContent: cropToContent) {
                 gridPages([p], rows: 1, cols: 1, rotate: true, into: &pages)
             }
-        } else if invoices.count > 1 {
-            try grid(bills: invoices, rows: 2, cols: 2, rotate: true, loader: loader, cropToContent: true, into: &pages)
+        } else if bills.count == 2 {
+            try grid(bills: bills, rows: 2, cols: 1, rotate: true, loader: loader, cropToContent: cropToContent, into: &pages)
+        } else {
+            try grid(bills: bills, rows: 2, cols: 2, rotate: true, loader: loader, cropToContent: cropToContent, into: &pages)
         }
     }
 
     // MARK: - 页面构造
 
     /// 整页放置（内容区 = A4 去边距）
-    private static func fullPage(_ page: PDFPage, into pages: inout [ComposedPage]) {
+    private static func fullPage(_ page: SourcePage, into pages: inout [ComposedPage]) {
         gridPages([page], rows: 1, cols: 1, rotate: false, into: &pages)
     }
 
@@ -153,13 +185,13 @@ enum PdfComposer {
         bills: [BillInfo], rows: Int, cols: Int, rotate: Bool,
         loader: SourceLoader, cropToContent: Bool = false, into pages: inout [ComposedPage]
     ) throws {
-        var all: [PDFPage] = []
+        var all: [SourcePage] = []
         for b in bills { all.append(contentsOf: try loader.pages(of: b, cropToContent: cropToContent)) }
         gridPages(all, rows: rows, cols: cols, rotate: rotate, into: &pages)
     }
 
     /// 把页面列表按 rows×cols 分页排入（row 0 在页面顶部）
-    private static func gridPages(_ items: [PDFPage], rows: Int, cols: Int, rotate: Bool, into pages: inout [ComposedPage]) {
+    private static func gridPages(_ items: [SourcePage], rows: Int, cols: Int, rotate: Bool, into pages: inout [ComposedPage]) {
         guard !items.isEmpty else { return }
         let perPage = rows * cols
         let cellW = (pageW - 2 * margin - CGFloat(cols - 1) * gap) / CGFloat(cols)
@@ -175,7 +207,8 @@ enum PdfComposer {
                 let x = margin + CGFloat(col) * (cellW + gap)
                 // PDF 坐标原点在左下：顶部行的 y 最大
                 let y = pageH - margin - CGFloat(row + 1) * cellH - CGFloat(row) * gap
-                composed.placements.append(.init(page: src, cell: CGRect(x: x, y: y, width: cellW, height: cellH), rotate: rotate))
+                composed.placements.append(.init(page: src.page, cell: CGRect(x: x, y: y, width: cellW, height: cellH),
+                                                 rotate: rotate, crop: src.crop))
             }
             pages.append(composed)
             idx += perPage
@@ -190,6 +223,7 @@ final class ComposedPage: PDFPage {
         var page: PDFPage
         var cell: CGRect
         var rotate: Bool
+        var crop: CGRect? = nil
     }
     var placements: [Placement] = []
 
@@ -202,9 +236,10 @@ final class ComposedPage: PDFPage {
 
         for placement in placements {
             let src = placement.page
-            // 滴滴发票等在加载时已把 cropBox 设为内容框：优先用 cropBox 绘制
-            let useBox: PDFDisplayBox = src.bounds(for: .cropBox) != src.bounds(for: .mediaBox) ? .cropBox : .mediaBox
-            let sb = src.bounds(for: useBox)
+            let media = src.bounds(for: .mediaBox)
+            // fit 框：有内容裁切框时按裁切框排版，绘制仍走 mediaBox 全页，
+            // 靠源空间裁剪只露出裁切区（不用 cropBox，避免与 draw 的框映射叠加错位）
+            let sb = placement.crop ?? media
             guard sb.width > 0, sb.height > 0 else { continue }
             let cell = placement.cell
 
@@ -214,7 +249,7 @@ final class ComposedPage: PDFPage {
             context.clip()
 
             if placement.rotate {
-                // 逆时针 90°（横向票据转正）：绕格中心旋转，宽高互换后等比 fit
+                // 左转 90°（逆时针，横向票据转正）：绕格中心旋转，宽高互换后等比 fit
                 let s = min(cell.width / sb.height, cell.height / sb.width)
                 context.translateBy(x: cell.midX, y: cell.midY)
                 context.rotate(by: .pi / 2)
@@ -228,7 +263,13 @@ final class ComposedPage: PDFPage {
                 context.scaleBy(x: s, y: s)
                 context.translateBy(x: -sb.minX, y: -sb.minY)
             }
-            src.draw(with: useBox, to: context)
+            if let crop = placement.crop {
+                // 变换后处于源页面空间：把可见区裁到内容框
+                context.beginPath()
+                context.addRect(crop)
+                context.clip()
+            }
+            src.draw(with: .mediaBox, to: context)
             context.restoreGState()
         }
     }
@@ -245,8 +286,8 @@ final class SourceLoader {
     }
 
     /// 取一张票据的全部页（多页全纳入）
-    /// - Parameter cropToContent: 对每页按文字内容框设置 cropBox（滴滴发票用；取不到内容框时整页）
-    func pages(of bill: BillInfo, cropToContent: Bool = false) throws -> [PDFPage] {
+    /// - Parameter cropToContent: 为每页计算文字内容框（滴滴发票用；取不到时不裁）
+    func pages(of bill: BillInfo, cropToContent: Bool = false) throws -> [SourcePage] {
         let url = originalsDir.appendingPathComponent(bill.sourceFile)
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw PdfComposer.ComposeError.sourceMissing(bill.sourceFile)
@@ -257,13 +298,10 @@ final class SourceLoader {
                 throw PdfComposer.ComposeError.sourceMissing(bill.sourceFile)
             }
             keepAlive.append(doc)
-            var result: [PDFPage] = []
+            var result: [SourcePage] = []
             for i in 0..<doc.pageCount {
                 guard let page = doc.page(at: i) else { continue }
-                if cropToContent, let cb = Self.contentBounds(of: page) {
-                    page.setBounds(cb, for: .cropBox)
-                }
-                result.append(page)
+                result.append(SourcePage(page: page, crop: cropToContent ? Self.contentBounds(of: page) : nil))
             }
             return result
         }
@@ -271,20 +309,22 @@ final class SourceLoader {
         guard let image = NSImage(contentsOf: url), let page = PDFPage(image: image) else {
             throw PdfComposer.ComposeError.sourceMissing(bill.sourceFile)
         }
-        return [page]
+        return [SourcePage(page: page)]
     }
 
     /// 页面的文字内容框（全部字符选区的外接矩形，略外扩）；无文字层/异常时返回 nil
     static func contentBounds(of page: PDFPage) -> CGRect? {
         let media = page.bounds(for: .mediaBox)
+        guard media.width > 0, media.height > 0 else { return nil }
         guard let text = page.string, !text.isEmpty else { return nil }
         let len = (text as NSString).length
         guard len > 0, let sel = page.selection(for: NSRange(location: 0, length: len)) else { return nil }
         var rect = sel.bounds(for: page)
         guard rect.width > 10, rect.height > 10 else { return nil }
         rect = rect.insetBy(dx: -6, dy: -6).intersection(media)
-        // 内容框几乎等于整页时没有裁的必要
-        if rect.width >= media.width * 0.98 && rect.height >= media.height * 0.98 { return nil }
+        let areaRatio = (rect.width * rect.height) / (media.width * media.height)
+        // 太小多半是选区异常、几乎整页则没必要裁
+        guard areaRatio > 0.08, areaRatio < 0.98 else { return nil }
         return rect
     }
 }

@@ -54,8 +54,8 @@ struct PackagingTests {
         #expect(pageCount(of: data) == 2)
     }
 
-    @Test func composerLoneBoardingPassGoesToProofPage() throws {
-        // 孤张登机牌：无其他交通票时进证明页（1 页），且仍在 3×2 出现 = 2 页
+    @Test func composerLoneBoardingPassOnlyOnProofPage() throws {
+        // 孤张登机牌：只在证明页出现一次，不再进交通票网格重复排
         let bills = [
             BillInfo(billType: .boardingPass, amount: 0, sourceFile: "bp.pdf", fields: ["departure_date": "2026-09-10"]),
         ]
@@ -63,7 +63,7 @@ struct PackagingTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         let trip = TripGroup(key: "0910-0910", firstMMDD: "0910", lastMMDD: "0910", cities: ["厦门"], bills: bills)
         let data = try PdfComposer.compose(trips: [trip], local: [], originalsDir: dir)
-        #expect(pageCount(of: data) == 2)
+        #expect(pageCount(of: data) == 1)
     }
 
     @Test func composerHotelFolioFullInvoiceDoubled() throws {
@@ -80,13 +80,45 @@ struct PackagingTests {
     }
 
     @Test func composerMultiPageDocumentFullyIncluded() throws {
-        // 多页文档（2 页餐饮小票扫描件）在 2×2 网格里占 2 格，仍是 1 页输出
+        // 多页文档（2 页餐饮小票扫描件）：单张发票走整页旋转档，两页各占一整页，全纳入
         let bills = [
             BillInfo(billType: .dining, amount: 88, sourceFile: "d.pdf", fields: ["issue_date": "2026-09-10"]),
         ]
         let dir = try makeOriginals(bills, pagesPerFile: 2)
         defer { try? FileManager.default.removeItem(at: dir) }
         let trip = TripGroup(key: "0910-0910", firstMMDD: "0910", lastMMDD: "0910", cities: ["厦门"], bills: bills)
+        let data = try PdfComposer.compose(trips: [trip], local: [], originalsDir: dir)
+        #expect(pageCount(of: data) == 2)
+    }
+
+    @Test func composerHotelPairsStayAdjacent() throws {
+        // 两组水单+发票：每组 水单整页 + 发票两份页 = 2 页，两组共 4 页
+        let folio1 = BillInfo(billType: .hotelFolio, amount: 500, sourceFile: "f1.pdf",
+                              fields: ["check_in_date": "2026-09-10", "check_out_date": "2026-09-11"])
+        var inv1 = BillInfo(billType: .hotelInvoice, amount: 500, sourceFile: "i1.pdf", fields: ["issue_date": "2026-09-11"])
+        inv1.pairedFolioUID = folio1.uid
+        let folio2 = BillInfo(billType: .hotelFolio, amount: 600, sourceFile: "f2.pdf",
+                              fields: ["check_in_date": "2026-09-11", "check_out_date": "2026-09-12"])
+        var inv2 = BillInfo(billType: .hotelInvoice, amount: 600, sourceFile: "i2.pdf", fields: ["issue_date": "2026-09-12"])
+        inv2.pairedFolioUID = folio2.uid
+        let bills = [folio1, inv1, folio2, inv2]
+        let dir = try makeOriginals(bills)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let trip = TripGroup(key: "0910-0912", firstMMDD: "0910", lastMMDD: "0912", cities: ["厦门"], bills: bills)
+        let data = try PdfComposer.compose(trips: [trip], local: [], originalsDir: dir)
+        #expect(pageCount(of: data) == 4)
+    }
+
+    @Test func composerDidiTwoInvoicesOneByTwo() throws {
+        // 滴滴发票 2 张 → 1×2 旋转一页
+        var i1 = BillInfo(billType: .didiInvoice, amount: 100, sourceFile: "di1.pdf", fields: ["issue_date": "2026-09-12"])
+        i1.didiLetter = "A"
+        var i2 = BillInfo(billType: .didiInvoice, amount: 120, sourceFile: "di2.pdf", fields: ["issue_date": "2026-09-12"])
+        i2.didiLetter = "B"
+        let bills = [i1, i2]
+        let dir = try makeOriginals(bills)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let trip = TripGroup(key: "0910-0912", firstMMDD: "0910", lastMMDD: "0912", cities: ["厦门"], bills: bills)
         let data = try PdfComposer.compose(trips: [trip], local: [], originalsDir: dir)
         #expect(pageCount(of: data) == 1)
     }
