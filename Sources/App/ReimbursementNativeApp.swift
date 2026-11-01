@@ -22,7 +22,7 @@ struct ReimbursementNativeApp: App {
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("关于 报销整理") {
-                    NSApplication.shared.orderFrontStandardAboutPanel(nil)
+                    state.showAbout = true
                 }
             }
             CommandGroup(replacing: .newItem) {
