@@ -43,4 +43,29 @@ struct LLMClientTests {
         let obj = try JSONParser.extractFirstJSONObject(from: text)
         #expect((obj["amount"] as? NSNumber)?.intValue == 10)
     }
+
+    // MARK: - 三期：分级重试与本地端点
+
+    @Test func retryableClassification() {
+        #expect(!LLMClient.isRetryable(LLMError.http(401, "")))
+        #expect(!LLMClient.isRetryable(LLMError.http(403, "")))
+        #expect(!LLMClient.isRetryable(LLMError.http(404, "")))
+        #expect(LLMClient.isRetryable(LLMError.http(429, "")))
+        #expect(LLMClient.isRetryable(LLMError.http(500, "")))
+        #expect(LLMClient.isRetryable(LLMError.http(503, "")))
+        #expect(!LLMClient.isRetryable(LLMError.notConfigured))
+        #expect(LLMClient.isRetryable(LLMError.parseFailed("x")))
+        #expect(LLMClient.isRetryable(URLError(.networkConnectionLost)))
+    }
+
+    @Test func localEndpointAllowsEmptyKey() {
+        let ollama = LLMConfig(apiKey: "", baseURL: URL(string: "http://localhost:11434/v1")!, model: "qwen2.5", timeout: 60)
+        #expect(ollama.isLocalEndpoint)
+        #expect(ollama.isConfigured)
+        let cloud = LLMConfig(apiKey: "", baseURL: URL(string: "https://api.deepseek.com/v1")!, model: "deepseek-chat", timeout: 60)
+        #expect(!cloud.isLocalEndpoint)
+        #expect(!cloud.isConfigured)
+        let cloudWithKey = LLMConfig(apiKey: "sk-x", baseURL: URL(string: "https://api.deepseek.com/v1")!, model: "deepseek-chat", timeout: 60)
+        #expect(cloudWithKey.isConfigured)
+    }
 }

@@ -28,39 +28,57 @@ enum PDFRenderer {
     /// - x=78, y=69, width=271, height=165
     private static let boardingPassCrop = CGRect(x: 78, y: 69, width: 271, height: 165)
 
-    /// 渲染所有页（可裁切 boarding pass 区域）
+    /// 页数（供按需逐页渲染的调用方先探规模，不必整本渲染）
+    static func pageCount(pdfData: Data) -> Int {
+        PDFDocument(data: pdfData)?.pageCount ?? 0
+    }
+
+    /// 按需渲染单页（可裁切）：OCR 主路径用它逐页渲染、用完即弃，
+    /// 不再像旧实现那样先把全部页 300 DPI 位图物化再截前几页
+    /// - Parameter crop: 给非 nil 时按这个 pt 矩形在像素空间裁切（调用方只对第一页传）
+    static func renderPage(pdfData: Data, pageIndex: Int, dpi: CGFloat = 300, crop: CGRect? = nil) -> CGImage? {
+        guard let doc = PDFDocument(data: pdfData), let page = doc.page(at: pageIndex) else { return nil }
+        let scale = dpi / 72.0
+        guard var pageImage = renderPage(page, scale: scale) else { return nil }
+        if let crop = crop {
+            let pixelCrop = CGRect(
+                x: crop.origin.x * scale,
+                y: crop.origin.y * scale,
+                width: crop.width * scale,
+                height: crop.height * scale
+            )
+            if let cropped = pageImage.cropping(to: pixelCrop) {
+                pageImage = cropped
+            }
+        }
+        return pageImage
+    }
+
+    /// 渲染所有页（可裁切 boarding pass 区域）——逐页 API 的批量包装
     /// - Parameter crop: 给非 nil 时，**第一页**按这个矩形裁切；后续页不裁切
     /// - Note: 渲染策略 = 整页渲染 + CGImage.cropping(to:) 裁切
     ///         不要试图用 ctx.translateBy + page.draw 在裁切画布上画（PDFKit 会重置变换，结果白图）
     static func render(pdfData: Data, dpi: CGFloat = 300, crop: CGRect? = nil) -> [CGImage] {
-        guard let doc = PDFDocument(data: pdfData) else { return [] }
-        var images: [CGImage] = []
-        let scale = dpi / 72.0
-        for i in 0..<doc.pageCount {
-            guard let page = doc.page(at: i) else { continue }
-            let bounds = page.bounds(for: .mediaBox)
-            guard var pageImage = renderPage(page, bounds: bounds, scale: scale) else { continue }
-
-            // 第一页 + 指定了 crop → 在像素空间裁切
-            if i == 0, let crop = crop {
-                let pixelCrop = CGRect(
-                    x: crop.origin.x * scale,
-                    y: crop.origin.y * scale,
-                    width: crop.width * scale,
-                    height: crop.height * scale
-                )
-                if let cropped = pageImage.cropping(to: pixelCrop) {
-                    pageImage = cropped
-                }
-            }
-            images.append(pageImage)
+        let count = pageCount(pdfData: pdfData)
+        return (0..<count).compactMap { i in
+            renderPage(pdfData: pdfData, pageIndex: i, dpi: dpi, crop: i == 0 ? crop : nil)
         }
-        return images
     }
 
     /// 把单个 PDF 页面按目标 DPI 渲染成 CGImage（用 NSBitmapImageRep 精确控制像素尺寸，
-    /// 避免 NSImage.lockFocus 受屏幕 backingScale 影响导致 DPI 失效/裁切错位）
-    private static func renderPage(_ page: PDFPage, bounds: CGRect, scale: CGFloat) -> CGImage? {
+    /// 避免 NSImage.lockFocus 受屏幕 backingScale 影响导致 DPI 失效/裁切错位）。
+    /// 可见区域以 cropBox 为准；页面带 /Rotate 时走 PDFKit thumbnail（旋转由框架处理）。
+    private static func renderPage(_ page: PDFPage, scale: CGFloat) -> CGImage? {
+        let bounds = page.bounds(for: .cropBox)
+        if page.rotation != 0 {
+            let swap = page.rotation % 180 != 0
+            let size = NSSize(
+                width: max(1, (swap ? bounds.height : bounds.width) * scale),
+                height: max(1, (swap ? bounds.width : bounds.height) * scale)
+            )
+            let thumb = page.thumbnail(of: size, for: .cropBox)
+            return thumb.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        }
         let pixelW = max(1, Int(bounds.width * scale))
         let pixelH = max(1, Int(bounds.height * scale))
         guard let rep = NSBitmapImageRep(
@@ -86,7 +104,7 @@ enum PDFRenderer {
         NSGraphicsContext.current = ctx
         NSColor.white.setFill()
         NSBezierPath(rect: NSRect(origin: .zero, size: bounds.size)).fill()
-        page.draw(with: .mediaBox, to: ctx.cgContext)
+        page.draw(with: .cropBox, to: ctx.cgContext)
         NSGraphicsContext.restoreGraphicsState()
         return rep.cgImage
     }
@@ -94,8 +112,7 @@ enum PDFRenderer {
     /// 只渲染第一页（低 DPI 版式探测用，避免整本渲染的内存开销）
     static func firstPageImage(pdfData: Data, dpi: CGFloat = 120) -> CGImage? {
         guard let doc = PDFDocument(data: pdfData), let page = doc.page(at: 0) else { return nil }
-        let bounds = page.bounds(for: .mediaBox)
-        return renderPage(page, bounds: bounds, scale: dpi / 72.0)
+        return renderPage(page, scale: dpi / 72.0)
     }
 
     /// 检测 PDF 第一页是否为 A4 整页尺寸
@@ -143,12 +160,11 @@ enum PDFRenderer {
         // 但 376×230 凭证区域的 image 也只有 ~50KB，可以接受。
 
         let crop = boardingPassCrop
-        let pageBounds = page.bounds(for: .mediaBox)
 
-        // 1) 按 300 DPI 渲染整页为 CGImage（与 render() 一致）
+        // 1) 按 300 DPI 渲染整页为 CGImage（与 render() 一致；登机凭证 cropBox 与 mediaBox 一致）
         let dpi: CGFloat = 300
         let scale = dpi / 72.0
-        guard let fullImage = renderPage(page, bounds: pageBounds, scale: scale) else { return nil }
+        guard let fullImage = renderPage(page, scale: scale) else { return nil }
 
         // 2) 裁切像素
         let pixelCrop = CGRect(

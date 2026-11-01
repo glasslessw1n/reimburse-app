@@ -47,6 +47,28 @@ enum TextExtractor {
         }
     }
 
+    /// 文字层是否可信：够长之外还要命中关键字段类别（金额/日期/发票号/税号等），
+    /// 替代纯字符数阈值——扫描件残留的模板字（页眉页脚/水印）字数不少但没有任何关键字段。
+    /// 命中 ≥2 类才采信（内部逻辑，单测覆盖）。
+    static func isTrustworthyTextLayer(_ text: String) -> Bool {
+        guard text.count > 100 else { return false }
+        var categories = 0
+        // 金额
+        if text.contains("价税合计") || text.contains("金额") || text.contains("合计")
+            || text.contains("¥") || text.contains("￥") { categories += 1 }
+        // 日期（2026-09-10 / 2026/9/10 / 2026年9月10日）
+        if text.range(of: #"\d{4}[-/年]\d{1,2}[-/月]\d{1,2}"#, options: .regularExpression) != nil { categories += 1 }
+        // 发票号 / 票号
+        if text.contains("发票号码") || text.contains("发票号") || text.contains("票号")
+            || text.contains("No.") || text.contains("NO.") { categories += 1 }
+        // 税号 / 识别号
+        if text.contains("纳税人识别号") || text.contains("统一社会信用代码") || text.contains("税号") { categories += 1 }
+        // 行程类关键信息（航班号/车次/入住离店）
+        if text.contains("航班") || text.contains("车次") || text.contains("入住") || text.contains("离店")
+            || text.contains("登机") { categories += 1 }
+        return categories >= 2
+    }
+
     /// PDF：先文字层 → 空就 OCR（最多前 maxOCRPages 页）
     /// 文字层"少"时（< 50 字符，常见于扫描 PDF 残留 "电子登机凭证" 等模板字），
     /// 也走 OCR + 登机凭证预裁切路径。
@@ -54,8 +76,7 @@ enum TextExtractor {
         // 1. 试文字层（过滤 PDF 自带的模板字）
         let text = PDFRenderer.extractText(pdfData: data)
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        // 文字层字符数 > 100 才认为有真实内容
-        if trimmed.count > 100 {
+        if isTrustworthyTextLayer(trimmed) {
             return trimmed
         }
 
@@ -75,15 +96,22 @@ enum TextExtractor {
             }
         }
 
-        // 2b. 渲染（第一页用 crop 区域，其他页原样）
-        let pages = PDFRenderer.render(pdfData: data, crop: crop)
-        let limited = Array(pages.prefix(maxOCRPages))
+        // 2b. 按需逐页渲染 + OCR（第一页用 crop 区域，其他页原样）：
+        //     旧实现先把全部页 300 DPI 位图都物化再截前几页，长文档白白吃内存
+        let totalPages = PDFRenderer.pageCount(pdfData: data)
+        let limit = min(totalPages, maxOCRPages)
         var allText: [String] = []
-        for (i, page) in limited.enumerated() {
-            let pageText = try await OCRService.recognize(cgImage: page)
+        for i in 0..<limit {
+            try Task.checkCancellation()
+            guard let pageImage = PDFRenderer.renderPage(pdfData: data, pageIndex: i, crop: i == 0 ? crop : nil) else { continue }
+            let pageText = try await OCRService.recognize(cgImage: pageImage)
             if !pageText.isEmpty {
                 allText.append("--- Page \(i + 1) ---\n\(pageText)")
             }
+        }
+        // 超出页数上限必须留痕，不再静默丢页（LLM 与用户都能看到这份文档没识别全）
+        if totalPages > maxOCRPages {
+            allText.append("--- 共 \(totalPages) 页，仅识别前 \(maxOCRPages) 页，其余页未识别 ---")
         }
         return allText.joined(separator: "\n\n")
     }

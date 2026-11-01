@@ -25,6 +25,13 @@ struct SettingsView: View {
     @State private var testResult: String = ""
     @State private var testColor: Color = .secondary
     @State private var isTesting = false
+
+    /// 本地服务（Ollama/vLLM 等回环地址）允许空 Key：拉取列表/测试连接不因空 Key 禁用
+    private var keyRequirementMet: Bool {
+        if !apiKey.isEmpty { return true }
+        guard let host = URL(string: baseURL)?.host?.lowercased() else { return false }
+        return host == "localhost" || host == "127.0.0.1" || host == "::1" || host.hasSuffix(".local")
+    }
     @State private var availableModels: [String] = []
     @State private var isFetchingModels = false
     @State private var showSavedTip = false
@@ -133,7 +140,7 @@ struct SettingsView: View {
                         }
                         .buttonStyle(.bordered)
                         .hoverLift()
-                        .disabled(apiKey.isEmpty || baseURL.isEmpty || isFetchingModels)
+                        .disabled(!keyRequirementMet || baseURL.isEmpty || isFetchingModels)
                     }
                 }
 
@@ -197,7 +204,7 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.bordered)
                     .hoverLift()
-                    .disabled(apiKey.isEmpty || baseURL.isEmpty || isTesting)
+                    .disabled(!keyRequirementMet || baseURL.isEmpty || isTesting)
 
                     Spacer()
 
@@ -298,7 +305,7 @@ struct SettingsView: View {
             return
         }
         saveError = nil
-        state.llmConfigured = !s.apiKey.isEmpty
+        state.llmConfigured = s.llmConfig.isConfigured
         state.llmAvailable = state.llmConfigured   // 徽章与配置状态同步（旧实现保存后徽章不亮）
 
         withAnimation { showSavedTip = true }

@@ -56,7 +56,7 @@ final class AppState {
 
     /// 启动时读 .env，并探测 LLM 是否真可用
     init() {
-        llmConfigured = !settingsStore.settings.apiKey.isEmpty
+        llmConfigured = settingsStore.settings.llmConfig.isConfigured
         llmAvailable = llmConfigured  // TODO: 启动时 ping 一次
         ocrAvailable = TextExtractor.isAvailable
     }

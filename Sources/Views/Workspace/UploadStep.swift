@@ -36,7 +36,8 @@ final class UploadViewModel {
     ///   boarding_pass 在识别为 boarding_pass 后裁切 PDF 并替换 originals/ 里的版本（用于打包）
     func processFile(_ url: URL, session: SessionManager, recognizer: LLMRecognizer) async -> BillInfo {
         let filename = url.lastPathComponent
-        current = filename
+        // 注意：这里不写 stage/current——4 个文件并发处理时共享单值会互相串扰，
+        // 进度文案由 processAll 做聚合展示（总数/已完成/最近完成）
 
         // 1. 读 bytes
         let data: Data
@@ -64,7 +65,6 @@ final class UploadViewModel {
         let suffix = url.pathExtension
         let ocrText: String
         do {
-            stage = "OCR 识别 \(filename)"
             ocrText = try await TextExtractor.extract(data: data, suffix: suffix)
         } catch {
             return BillInfo(
@@ -74,7 +74,6 @@ final class UploadViewModel {
         }
 
         // 4. LLM
-        stage = "LLM 抽取字段 \(filename)"
         let receipt = await recognizer.recognize(
             ocrText: ocrText, filename: filename, sourceFile: filename
         )
@@ -84,7 +83,6 @@ final class UploadViewModel {
            suffix.lowercased() == "pdf",
            let cropped = PDFRenderer.cropBoardingPass(pdfData: data) {
             do {
-                stage = "裁切登机牌 \(filename)"
                 _ = try session.saveOriginal(data: cropped, filename: sourceFilename, overwrite: true)
             } catch {
                 // 裁切替换失败不影响识别结果
@@ -354,8 +352,16 @@ struct UploadStep: View {
         vm.total = urls.count
         vm.done = 0
         vm.lastError = nil
-        vm.stage = "准备上传…"
+        vm.stage = "正在识别 \(urls.count) 张票据…"
+        vm.current = ""
         defer { vm.processing = false }
+
+        // 聚合进度：完成一张更新一次计数与「最近完成」（单值文案只在这里写，不串扰）
+        func noteCompleted(_ bill: BillInfo) {
+            session.ingest(bill)
+            vm.done += 1
+            vm.current = "最近完成：\(bill.sourceFile)"
+        }
 
         await withTaskGroup(of: BillInfo.self) { group in
             var pending = 0
@@ -364,10 +370,7 @@ struct UploadStep: View {
             for url in urls {
                 if pending >= max {
                     if let bill = await group.next() {
-                        await MainActor.run {
-                            session.ingest(bill)
-                            vm.done += 1
-                        }
+                        await MainActor.run { noteCompleted(bill) }
                         pending -= 1
                     }
                 }
@@ -378,10 +381,7 @@ struct UploadStep: View {
             }
 
             for await bill in group {
-                await MainActor.run {
-                    session.ingest(bill)
-                    vm.done += 1
-                }
+                await MainActor.run { noteCompleted(bill) }
             }
         }
         vm.stage = "识别完成"
