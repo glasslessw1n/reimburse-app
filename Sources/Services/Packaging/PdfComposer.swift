@@ -7,7 +7,7 @@
 //
 //  每个行程的组装顺序：
 //    自驾行程单（整页）→ 加油/通行费（发票类分档排版）→ 行程证明页 P1（最早+最晚交通票 1×2）
-//    → 交通票 3×2（已上证明页的登机牌不再重复——登机牌只是行程证明，不是报销凭证）
+//    → 交通票 3×2（登机牌不进：只是行程证明，只上证明页且只用起止两张，其余弃用）
 //    → 酒店（水单整页后紧跟其配对发票同页两份）→ 滴滴行程单 → 滴滴发票 → 餐饮 → 其他
 //  本地段：通信（1×2）→ 滴滴行程单 → 滴滴发票 → 餐饮 → 其他。
 //
@@ -99,22 +99,20 @@ enum PdfComposer {
         // 2. 加油 + 通行费：发票类分档排版
         try invoiceGrid(bills: gasToll, loader: loader, into: &pages)
         // 3. 行程证明页 P1：最早 + 最晚交通票各一（孤张也进，保证不丢）
-        var proofUIDs = Set<String>()
         if !transport.isEmpty {
             var proof: [SourcePage] = []
             if let first = try loader.pages(of: transport[0]).first {
                 proof.append(first)
-                proofUIDs.insert(transport[0].uid)
             }
             if transport.count > 1, let last = try loader.pages(of: transport[transport.count - 1]).first {
                 proof.append(last)
-                proofUIDs.insert(transport[transport.count - 1].uid)
             }
             gridPages(proof, rows: 2, cols: 1, rotate: false, into: &pages)
         }
-        // 4. 交通票 3×2：已在证明页出现过的登机牌不再重复排
-        //    （登机牌是行程证明而非报销凭证；未上证明页的登机牌仍排，避免漏件）
-        let transportGrid = transport.filter { !($0.billType == .boardingPass && proofUIDs.contains($0.uid)) }
+        // 4. 交通票 3×2：登机牌一律不进——它们只是行程证明，只出现在证明页；
+        //    超过两张时只有起止两张上证明页，其余在整合 PDF 中弃用（原文件仍在 ZIP 里）。
+        //    火车票/行程单等报销凭证以及出租车/滴滴等打车凭证照常排。
+        let transportGrid = transport.filter { $0.billType != .boardingPass }
         try grid(bills: transportGrid, rows: 3, cols: 2, rotate: false, loader: loader, into: &pages)
         // 5. 酒店：每张水单整页后紧跟它配对的发票（同页两份）；未配对发票排在本组末尾
         var usedInvoiceUIDs = Set<String>()

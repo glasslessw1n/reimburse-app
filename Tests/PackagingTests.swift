@@ -91,6 +91,22 @@ struct PackagingTests {
         #expect(pageCount(of: data) == 2)
     }
 
+    @Test func composerBoardingPassesOnlyOnProofPage() throws {
+        // 登机牌 3 张 + 行程单 1 张：证明页用起止两张登机牌（1 页），中间一张弃用；
+        // 交通票网格只有行程单（1 页）→ 共 2 页
+        let bills = [
+            BillInfo(billType: .boardingPass, amount: 0, sourceFile: "bp1.pdf", fields: ["departure_date": "2026-09-10"]),
+            BillInfo(billType: .boardingPass, amount: 0, sourceFile: "bp2.pdf", fields: ["departure_date": "2026-09-12"]),
+            BillInfo(billType: .boardingPass, amount: 0, sourceFile: "bp3.pdf", fields: ["departure_date": "2026-09-14"]),
+            BillInfo(billType: .flightItinerary, amount: 900, sourceFile: "fi.pdf", fields: ["issue_date": "2026-09-10"]),
+        ]
+        let dir = try makeOriginals(bills)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let trip = TripGroup(key: "0910-0914", firstMMDD: "0910", lastMMDD: "0914", cities: ["厦门"], bills: bills)
+        let data = try PdfComposer.compose(trips: [trip], local: [], originalsDir: dir)
+        #expect(pageCount(of: data) == 2)
+    }
+
     @Test func composerHotelPairsStayAdjacent() throws {
         // 两组水单+发票：每组 水单整页 + 发票两份页 = 2 页，两组共 4 页
         let folio1 = BillInfo(billType: .hotelFolio, amount: 500, sourceFile: "f1.pdf",
