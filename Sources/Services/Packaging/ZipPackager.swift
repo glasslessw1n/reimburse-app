@@ -68,14 +68,24 @@ enum ZipPackager {
                 try FileManager.default.copyItem(at: src, to: dst)
             }
             // 勾选时才生成报销明细.xlsx
+            // 生成失败必须冒泡：旧实现只写 stderr 仍报打包成功，用户到提交时才发现明细缺失
             if includeExcel {
                 let xlsxURL = stagingFolder.appendingPathComponent("报销明细.xlsx")
                 do {
-                    try ExcelBuilder.build(bills: session.manifest.bills, homeCities: homeCities, outputURL: xlsxURL)
+                    if session.manifest.finalized {
+                        // 与 ZIP 同源：直接用 finalize 好的行程分组，不再重跑分组
+                        try ExcelBuilder.build(trips: session.manifest.trips,
+                                               local: session.manifest.local, outputURL: xlsxURL)
+                    } else {
+                        try ExcelBuilder.build(bills: session.manifest.bills, homeCities: homeCities, outputURL: xlsxURL)
+                    }
                 } catch {
-                    FileHandle.standardError.write(Data("[ZipPackager] Excel 生成失败: \(error.localizedDescription)\n".utf8))
+                    throw PackageError.zipFailed("报销明细生成失败：\(error.localizedDescription)")
                 }
             }
+        } catch let e as PackageError {
+            try? FileManager.default.removeItem(at: stagingRoot)
+            throw e
         } catch {
             try? FileManager.default.removeItem(at: stagingRoot)
             throw PackageError.zipFailed("staging 失败：\(error.localizedDescription)")
@@ -148,10 +158,14 @@ enum ZipPackager {
         let src = originals.appendingPathComponent(bill.sourceFile)
         guard FileManager.default.fileExists(atPath: src.path) else { return }
 
-        // 优先用 hotel match 后覆盖的 finalTargetName（住宿发票匹配水单后改名）
-        let newName = bill.finalTargetName.isEmpty
-            ? SessionManager.buildFilename(for: bill)
-            : bill.finalTargetName
+        // 名字以 manifest 为准：finalTargetName（hotel match 改名）> finalize 定死的
+        // targetFilename（已做同目录唯一化）> 现场重算。旧实现跳过 targetFilename，
+        // 与清单记录可能对不上
+        let newName = !bill.finalTargetName.isEmpty
+            ? bill.finalTargetName
+            : (!bill.targetFilename.isEmpty
+                ? bill.targetFilename
+                : SessionManager.buildFilename(for: bill))
         let ext = (newName as NSString).pathExtension
         let base = (newName as NSString).deletingPathExtension
 

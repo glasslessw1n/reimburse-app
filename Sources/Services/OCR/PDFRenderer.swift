@@ -91,8 +91,15 @@ enum PDFRenderer {
         return rep.cgImage
     }
 
-    /// 检测 PDF 是否需要登机凭证裁切
-    /// - A4 整页（595×842 pt）→ 未裁切，需要裁切到 376×230
+    /// 只渲染第一页（低 DPI 版式探测用，避免整本渲染的内存开销）
+    static func firstPageImage(pdfData: Data, dpi: CGFloat = 120) -> CGImage? {
+        guard let doc = PDFDocument(data: pdfData), let page = doc.page(at: 0) else { return nil }
+        let bounds = page.bounds(for: .mediaBox)
+        return renderPage(page, bounds: bounds, scale: dpi / 72.0)
+    }
+
+    /// 检测 PDF 第一页是否为 A4 整页尺寸
+    /// - A4 整页（595×842 pt）→ 未裁切的登机凭证**候选**（是否真裁切还要有登机牌证据，见 TextExtractor）
     /// - 单页尺寸 ≈ 376×230 pt → 已裁切
     /// - 其他尺寸（火车票 / 出租车票）→ 不处理
     static func needsBoardingPassCrop(pdfData: Data) -> Bool {

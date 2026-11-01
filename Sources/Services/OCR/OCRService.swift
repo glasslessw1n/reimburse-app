@@ -34,7 +34,8 @@ struct OCRService {
     }
 
     /// CGImage → 文本
-    static func recognize(cgImage: CGImage) async throws -> String {
+    /// - Parameter level: .accurate 为正式识别；.fast 仅用于版式探测等粗粒度场景
+    static func recognize(cgImage: CGImage, level: VNRequestTextRecognitionLevel = .accurate) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
             let request = VNRecognizeTextRequest { req, err in
                 if let err = err {
@@ -48,7 +49,7 @@ struct OCRService {
                 let lines = observations.compactMap { $0.topCandidates(1).first?.string }
                 continuation.resume(returning: lines.joined(separator: "\n"))
             }
-            request.recognitionLevel = .accurate
+            request.recognitionLevel = level
             request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US"]
             // 发票里的票号、乘客名、酒店名是专有名词，语言纠错反而会把对的改错
             request.usesLanguageCorrection = false

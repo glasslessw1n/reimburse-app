@@ -28,6 +28,7 @@ struct SettingsView: View {
     @State private var availableModels: [String] = []
     @State private var isFetchingModels = false
     @State private var showSavedTip = false
+    @State private var saveError: String?
     @State private var manualBaseURL: Bool = false  // 用户改过 baseURL → 不再自动覆盖
 
     /// 标签宽度（行式布局：标签在左、输入框在右）
@@ -200,6 +201,13 @@ struct SettingsView: View {
 
                     Spacer()
 
+                    if let saveError {
+                        Text(saveError)
+                            .font(.callout)
+                            .foregroundStyle(.red)
+                            .lineLimit(2)
+                    }
+
                     Button {
                         save()
                     } label: {
@@ -282,8 +290,16 @@ struct SettingsView: View {
             .map { String($0).trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
         state.settingsStore.settings = s
-        try? state.settingsStore.save()
+        do {
+            try state.settingsStore.save()
+        } catch {
+            // 保存失败不许假报成功：红字提示，且不点亮“已保存”
+            saveError = "保存失败：\(error.localizedDescription)"
+            return
+        }
+        saveError = nil
         state.llmConfigured = !s.apiKey.isEmpty
+        state.llmAvailable = state.llmConfigured   // 徽章与配置状态同步（旧实现保存后徽章不亮）
 
         withAnimation { showSavedTip = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {

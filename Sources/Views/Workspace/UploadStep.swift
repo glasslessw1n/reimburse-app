@@ -118,13 +118,27 @@ final class UploadViewModel {
     }
 
     /// 重新识别单张：读原文件重跑 OCR+LLM，替换同 uid 的旧票据（保留 uid 保持列表身份稳定）
+    /// 失败必须显形（旧实现静默 return / 空文本照常送检，用户毫无感知）
     func reRecognize(_ bill: BillInfo, session: SessionManager, recognizer: LLMRecognizer) async {
         let src = session.rootDir.appendingPathComponent("originals").appendingPathComponent(bill.sourceFile)
-        guard let data = try? Data(contentsOf: src) else { return }
+        guard let data = try? Data(contentsOf: src) else {
+            lastError = "原文件读取失败：\(bill.sourceFile)"
+            return
+        }
 
         let suffix = (bill.sourceFile as NSString).pathExtension
         stage = "重新识别 \(bill.sourceFile)"
-        let ocrText = (try? await TextExtractor.extract(data: data, suffix: suffix)) ?? ""
+        let ocrText: String
+        do {
+            ocrText = try await TextExtractor.extract(data: data, suffix: suffix)
+        } catch {
+            lastError = "文本提取失败：\(bill.sourceFile)（\(error.localizedDescription)）"
+            return
+        }
+        guard !ocrText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            lastError = "未提取到文本，已保留原识别结果：\(bill.sourceFile)"
+            return
+        }
         let receipt = await recognizer.recognize(
             ocrText: ocrText, filename: bill.sourceFile, sourceFile: bill.sourceFile
         )
@@ -259,6 +273,14 @@ struct UploadStep: View {
             Button("清空", role: .destructive) { clearAll() }
         } message: {
             Text("将删除当前会话的所有识别结果与原文件，该操作不可撤销。")
+        }
+        .alert("操作失败", isPresented: Binding(
+            get: { vm.lastError != nil },
+            set: { if !$0 { vm.lastError = nil } }
+        )) {
+            Button("好") { vm.lastError = nil }
+        } message: {
+            Text(vm.lastError ?? "")
         }
     }
 

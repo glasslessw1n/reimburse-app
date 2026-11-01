@@ -110,4 +110,45 @@ struct SessionManagerTests {
         #expect(container[0].didiLetter == "A")
         #expect(container[1].didiLetter == "A")  // 发票按金额匹配行程单的字母
     }
+
+    // MARK: - 一期：配对门槛 / 未配对显形 / 损坏恢复
+
+    /// 同额但名称、城市都对不上的酒店发票不应被自动配对，且要标记待复核
+    @Test func hotelMatchRejectsDifferentHotelSameAmount() {
+        var bills: [BillInfo] = [
+            BillInfo(billType: .hotelFolio, amount: 800, sourceFile: "folio.pdf",
+                     fields: ["hotel_name": "厦门海悦山庄酒店", "city": "厦门",
+                              "check_in_date": "2026-09-10", "check_out_date": "2026-09-12"]),
+            BillInfo(billType: .hotelInvoice, amount: 800, sourceFile: "inv.pdf",
+                     fields: ["seller_name": "北京饭店", "city": "北京", "issue_date": "2026-09-12"]),
+        ]
+        SessionManager.matchAndEnrichHotel(bills: &bills)
+        #expect(bills[1].pairedFolioUID == nil, "名称城市都对不上不应配对")
+        #expect(bills[1].needsReview, "未配对应标记待复核")
+    }
+
+    /// 滴滴发票未匹配到行程单时保留自身日期并标记待复核
+    @Test func linkDidiInvoicesFlagsUnmatched() {
+        let trip = BillInfo(billType: .didiTrip, amount: 100, sourceFile: "trip.pdf", fields: ["departure_date": "2026-09-22"])
+        let invoice = BillInfo(billType: .didiInvoice, amount: 999, sourceFile: "inv.pdf", fields: ["issue_date": "2026-09-26"])
+        var bills = [trip, invoice]
+        SessionManager.linkDidiInvoices(bills: &bills)
+        #expect(bills[1].dateMMDDs == ["0926"])
+        #expect(bills[1].needsReview)
+    }
+
+    /// manifest 损坏时应备份原文件并重建，而不是静默覆盖
+    @Test func corruptedManifestIsBackedUpNotSilentlyWiped() throws {
+        let sid = UUID().uuidString.lowercased()
+        let first = SessionManager(sid: sid)
+        let manifestURL = first.rootDir.appendingPathComponent("manifest.json")
+        try Data("{\"broken\": ".utf8).write(to: manifestURL)
+
+        let second = SessionManager(sid: sid)
+        #expect(second.recoveredFromCorruption)
+        #expect(second.manifest.bills.isEmpty)
+        let files = try FileManager.default.contentsOfDirectory(atPath: second.rootDir.path)
+        #expect(files.contains { $0.hasPrefix("manifest.corrupt-") }, "应留下损坏备份，实际：\(files)")
+        try? FileManager.default.removeItem(at: second.rootDir)
+    }
 }

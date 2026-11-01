@@ -12,6 +12,7 @@ import SwiftUI
 
 struct WorkspaceView: View {
     @Environment(AppState.self) var state: AppState
+    @State private var recoveryNoticeShown = false
 
     var body: some View {
         @Bindable var state = state
@@ -51,6 +52,15 @@ struct WorkspaceView: View {
             ToolbarItem(placement: .principal) {
                 StepPicker(selection: $state.workspaceStep)
             }
+        }
+        // 会话清单损坏恢复提示：原文件已备份为 manifest.corrupt-*.json，不静默清空
+        .alert("会话清单已恢复", isPresented: Binding(
+            get: { (state.currentSession?.recoveredFromCorruption ?? false) && !recoveryNoticeShown },
+            set: { if !$0 { recoveryNoticeShown = true } }
+        )) {
+            Button("知道了") { recoveryNoticeShown = true }
+        } message: {
+            Text("该会话的清单文件损坏，已自动备份原文件（manifest.corrupt 开头）并重建为空清单。原文件（originals）未受影响，可重新识别。")
         }
     }
 }

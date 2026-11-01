@@ -52,4 +52,50 @@ struct ExcelBuilderTests {
         #expect(xml.contains("1753.00"), "总计应为 553 + 1200 = 1753")
         #expect(!xml.contains("2953.00"), "不应重复计入酒店金额")
     }
+
+    // MARK: - 滴滴子集和覆盖（一期）
+
+    @Test func didiCoverageSubsetSum() {
+        // 一张汇总发票 300 覆盖行程单 100+200（旧实现只认单张相等 → 全额双计）
+        let covered = ExcelBuilder.didiCoveredTrips(invoiceAmounts: [300], tripAmounts: [100, 200, 50])
+        #expect(covered == [0, 1])
+    }
+
+    @Test func didiCoverageNoSubsetNoCover() {
+        let covered = ExcelBuilder.didiCoveredTrips(invoiceAmounts: [150], tripAmounts: [100, 200])
+        #expect(covered.isEmpty)
+    }
+
+    @Test func didiCoverageTwoInvoicesPartition() {
+        let covered = ExcelBuilder.didiCoveredTrips(invoiceAmounts: [300, 50], tripAmounts: [100, 200, 50])
+        #expect(covered == [0, 1, 2])
+    }
+
+    @Test func didiAggregateInvoiceNotDoubleCountedInSheet() {
+        let trip = TripGroup(key: "0910-0912", firstMMDD: "0910", lastMMDD: "0912", cities: ["厦门"], bills: [
+            BillInfo(billType: .didiTrip, amount: 100, sourceFile: "t1.pdf", fields: ["departure_date": "2026-09-10"]),
+            BillInfo(billType: .didiTrip, amount: 200, sourceFile: "t2.pdf", fields: ["departure_date": "2026-09-11"]),
+            BillInfo(billType: .didiInvoice, amount: 300, sourceFile: "inv.pdf", fields: ["issue_date": "2026-09-12"]),
+        ])
+        let xml = ExcelBuilder.buildSheet(trips: [trip], localBills: [])
+        #expect(xml.contains("报销总计: ¥300.00"), "汇总发票 300 应只计一次\n\(xml)")
+        #expect(!xml.contains("600.00"), "不应把行程单金额再计一遍")
+    }
+
+    // MARK: - 酒店一票多住（pairedFolioUID 口径，一期）
+
+    @Test func hotelOneInvoiceTwoFoliosCountedOnce() {
+        let folio1 = BillInfo(billType: .hotelFolio, amount: 500, sourceFile: "f1.pdf",
+                              fields: ["check_in_date": "2026-09-10", "check_out_date": "2026-09-11", "city": "厦门"])
+        let folio2 = BillInfo(billType: .hotelFolio, amount: 500, sourceFile: "f2.pdf",
+                              fields: ["check_in_date": "2026-09-11", "check_out_date": "2026-09-12", "city": "厦门"])
+        var invoice = BillInfo(billType: .hotelInvoice, amount: 1000, sourceFile: "inv.pdf",
+                               fields: ["issue_date": "2026-09-12", "city": "厦门"])
+        invoice.pairedFolioUID = folio1.uid
+        let trip = TripGroup(key: "0910-0912", firstMMDD: "0910", lastMMDD: "0912", cities: ["厦门"],
+                             bills: [folio1, folio2, invoice])
+        let xml = ExcelBuilder.buildSheet(trips: [trip], localBills: [])
+        #expect(xml.contains("报销总计: ¥1000.00"), "两张水单 500+500，发票只是凭证，不应再计\n\(xml)")
+        #expect(!xml.contains("2000.00"), "一票多住不应双计")
+    }
 }

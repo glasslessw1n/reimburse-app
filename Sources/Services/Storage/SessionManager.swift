@@ -26,6 +26,9 @@ final class SessionManager {
     let sid: String
     let rootDir: URL
 
+    /// 本次打开时 manifest 解码失败、已备份原文件并重建空清单（UI 据此提示用户）
+    private(set) var recoveredFromCorruption = false
+
     init(sid: String) {
         self.sid = sid
         let appSupport = Sessions.sessionsDir().appendingPathComponent(sid, isDirectory: true)
@@ -33,8 +36,23 @@ final class SessionManager {
 
         // 加载或创建 manifest
         let manifestURL = appSupport.appendingPathComponent("manifest.json")
-        if let data = try? Data(contentsOf: manifestURL),
-           let m = try? JSONDecoder().decode(SessionManifest.self, from: data) {
+        var loaded: SessionManifest? = nil
+        if let data = try? Data(contentsOf: manifestURL) {
+            if let m = try? JSONDecoder().decode(SessionManifest.self, from: data) {
+                loaded = m
+            } else {
+                // 文件在但解码失败 = 清单损坏：先把原文件备份留证，再重建，
+                // 绝不静默用空清单覆盖（旧行为会让整个会话无声消失）
+                let stamp = ISO8601DateFormatter().string(from: Date())
+                    .replacingOccurrences(of: ":", with: "-")
+                let backupURL = appSupport.appendingPathComponent("manifest.corrupt-\(stamp).json")
+                try? FileManager.default.copyItem(at: manifestURL, to: backupURL)
+                FileHandle.standardError.write(Data(
+                    "[SessionManager] manifest 损坏，已备份到 \(backupURL.lastPathComponent) 并重建\n".utf8))
+                self.recoveredFromCorruption = true
+            }
+        }
+        if let m = loaded {
             self.manifest = m
         } else {
             self.manifest = SessionManifest(
@@ -87,13 +105,27 @@ final class SessionManager {
         if let dupIdx = manifest.bills.firstIndex(where: { Self.dedupKey(of: $0) == billKey }) {
             if bill.confidence > manifest.bills[dupIdx].confidence {
                 manifest.bills[dupIdx] = bill
+                // 替换也可能改变 needsReview，统一重算（旧实现此路径漏算）
+                manifest.needsReviewCount = manifest.bills.filter { $0.needsReview }.count
+                invalidateDerived()
                 save()
             }
             return
         }
         manifest.bills.append(bill)
         if bill.needsReview { manifest.needsReviewCount += 1 }
+        invalidateDerived()
         save()
+    }
+
+    /// bills 是唯一事实源：任何变更都使 finalize 的派生视图（trips/local）失效，
+    /// 避免补传/删除/替换后派生视图与 bills 分叉（漏票或已删票据“复活”）
+    private func invalidateDerived() {
+        if manifest.finalized || !manifest.trips.isEmpty || !manifest.local.isEmpty {
+            manifest.trips = []
+            manifest.local = []
+            manifest.finalized = false
+        }
     }
 
     /// 通用 dedup key：类型 + 日期范围 + 起降城市 + 关键 fields
@@ -159,6 +191,25 @@ final class SessionManager {
             local[i].targetFilename = baseName
         }
 
+        // 目标文件名在（子目录内）唯一化：同日同路线同额等撞名时追加 " 2"/" 3"，
+        // 在 finalize 阶段就定死并落账，避免打包落盘时临时改名与清单对不上
+        var seenNames: [String: Int] = [:]
+        func uniquify(_ b: inout BillInfo) {
+            let key = b.targetSubdir + "/" + b.targetFilename
+            let n = (seenNames[key] ?? 0) + 1
+            seenNames[key] = n
+            if n > 1 {
+                let ext = (b.targetFilename as NSString).pathExtension
+                let base = (b.targetFilename as NSString).deletingPathExtension
+                b.targetFilename = ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)"
+                if !b.finalTargetName.isEmpty { b.finalTargetName = b.targetFilename }
+            }
+        }
+        for ti in 0..<trips.count {
+            for bi in 0..<trips[ti].bills.count { uniquify(&trips[ti].bills[bi]) }
+        }
+        for i in 0..<local.count { uniquify(&local[i]) }
+
         // 同步回 manifest
         manifest.trips = trips
         manifest.local = local
@@ -166,6 +217,8 @@ final class SessionManager {
         manifest.bills = trips.flatMap { $0.bills } + local
         // 重新统计复核数（enrich 可能把 needsReview 翻成 true，ingest 时的计数会漏）
         manifest.needsReviewCount = manifest.bills.filter { $0.needsReview }.count
+        manifest.finalized = true
+        manifest.homeCities = homeCities.sorted()
 
         save()
     }
@@ -205,23 +258,63 @@ final class SessionManager {
                     && bills[fIdx].amount > 0
                     && abs(inv.amount - bills[fIdx].amount) < 0.01
             }
+            // 配对门槛：仅金额相等不够——还要名称/城市有最低相似度，
+            // 否则同额不同酒店会被误绑，并连带污染日期/城市/文件名。
+            // 例外：任一侧名称全缺失且只有一个候选时按金额配对，但标记待复核。
             let bestIdx: Int?
+            var weakMatch = false
+            var ambiguous = false
             if candidates.count == 1 {
-                bestIdx = candidates[0]
+                let fIdx = candidates[0]
+                let sim = Self.hotelSimilarity(inv, bills[fIdx])
+                let namesMissing = Self.hotelNamesMissing(inv) || Self.hotelNamesMissing(bills[fIdx])
+                if sim >= 0.35 {
+                    bestIdx = fIdx
+                } else if namesMissing {
+                    bestIdx = fIdx
+                    weakMatch = true
+                } else {
+                    bestIdx = nil
+                    ambiguous = true
+                }
             } else if candidates.count > 1 {
-                bestIdx = candidates.max(by: { a, b in
-                    Self.hotelSimilarity(inv, bills[a]) < Self.hotelSimilarity(inv, bills[b])
-                })
+                let scored = candidates.map { ($0, Self.hotelSimilarity(inv, bills[$0])) }
+                let best = scored.max(by: { $0.1 < $1.1 })
+                if let best = best, best.1 >= 0.35 {
+                    bestIdx = best.0
+                } else {
+                    bestIdx = nil
+                    ambiguous = true
+                }
             } else {
                 bestIdx = nil
             }
 
             if let fIdx = bestIdx {
+                inv.pairedFolioUID = bills[fIdx].uid
+                if weakMatch {
+                    inv.needsReview = true
+                    let reason = "与同额水单自动配对（酒店名称缺失，请核对）"
+                    inv.reviewReason = inv.reviewReason.isEmpty ? reason : "\(inv.reviewReason)；\(reason)"
+                }
                 enrich(invoice: &inv, folio: &bills[fIdx])
-                bills[iIdx] = inv  // 写回
                 usedFolios.insert(fIdx)
+            } else if ambiguous {
+                inv.needsReview = true
+                let reason = "有多张同额水单且名称不够相似，未自动配对（请人工确认）"
+                inv.reviewReason = inv.reviewReason.isEmpty ? reason : "\(inv.reviewReason)；\(reason)"
             }
+            bills[iIdx] = inv  // 写回（配对标记/复核标记也要落账）
         }
+    }
+
+    /// 酒店名称类字段（hotel_name / seller_name）是否全缺失
+    private static func hotelNamesMissing(_ b: BillInfo) -> Bool {
+        let names = [
+            b.fields["hotel_name"]?.flatMap { $0 },
+            b.fields["seller_name"]?.flatMap { $0 }
+        ].compactMap { $0 }
+        return names.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty }
     }
 
     /// 酒店水单与发票的相似度（用于金额相同的多个候选间消歧）
@@ -348,7 +441,11 @@ final class SessionManager {
             }
         }
 
-        // 7) match 成功后：用 folio 的日期范围 + 城市生成最终文件名（覆盖发票的 targetFilename）
+        // 7) 派生日期列表与最新 fields/dateRange 对齐（按完整日期排序，避免跨年错序）
+        invoice.refreshDateMMDDs()
+        folio.refreshDateMMDDs()
+
+        // 8) match 成功后：用 folio 的日期范围 + 城市生成最终文件名（覆盖发票的 targetFilename）
         let newName = Self.buildFilename(for: invoice)
         if newName != invoice.targetFilename {
             invoice.finalTargetName = newName
@@ -451,9 +548,16 @@ final class SessionManager {
             container[i].didiLetter = matchedLetter.isEmpty ? nextAvailableLetter() : matchedLetter
         }
 
-        // 3) toll_invoice：顺序分配数字序号
+        // 3) toll_invoice：按日期升序分配数字序号（补传后序号与发生顺序一致）
         var tollSeq = 1
-        for i in 0..<container.count where container[i].billType == .tollInvoice {
+        let tollIdxs = container.indices
+            .filter { container[$0].billType == .tollInvoice }
+            .sorted { a, b in
+                let ka = container[a].dateRange.start.isEmpty ? "9999" : container[a].dateRange.start
+                let kb = container[b].dateRange.start.isEmpty ? "9999" : container[b].dateRange.start
+                return ka != kb ? ka < kb : a < b
+            }
+        for i in tollIdxs {
             container[i].didiLetter = String(format: "%02d", tollSeq)
             tollSeq += 1
         }
@@ -475,9 +579,25 @@ final class SessionManager {
     /// 背景：滴滴常统一批量开票，所有发票 issue_date 都集中在最后一天，
     /// 若不按金额对齐，发票会全被日期挂到最后一个行程。
     static func linkDidiInvoices(bills: inout [BillInfo]) {
+        let linkReason = "滴滴发票未匹配到同额行程单（请核对）"
+        // 先把每张滴滴发票的派生归属从自身 fields 重建，再做本次 link：
+        // 借用是可逆的——金额/配对关系被修正后重跑 finalize 能自愈，不残留旧污染；
+        // 上一轮 link 留下的未配对标记也一并清掉，本轮重新判定
+        for i in bills.indices where bills[i].billType == .didiInvoice {
+            bills[i].recomputeDerived()
+            if bills[i].reviewReason.contains(linkReason) {
+                bills[i].reviewReason = bills[i].reviewReason
+                    .replacingOccurrences(of: "；\(linkReason)", with: "")
+                    .replacingOccurrences(of: linkReason, with: "")
+                if bills[i].reviewReason.isEmpty {
+                    bills[i].needsReview = !bills[i].error.isEmpty || bills[i].confidence < 0.5
+                }
+            }
+        }
         let tripIndices = bills.indices.filter { bills[$0].billType == .didiTrip }
         var used = Set<Int>()
         for i in bills.indices where bills[i].billType == .didiInvoice && bills[i].amount > 0 {
+            var matched = false
             for j in tripIndices where !used.contains(j) {
                 guard bills[j].amount > 0 else { continue }
                 if abs(bills[j].amount - bills[i].amount) < 0.01 {
@@ -487,7 +607,16 @@ final class SessionManager {
                     bills[i].fromCity = bills[j].fromCity
                     bills[i].toCity = bills[j].toCity
                     used.insert(j)
+                    matched = true
                     break
+                }
+            }
+            if !matched {
+                // 未配对要显形，不能看起来像一条正常的新滴滴段
+                bills[i].needsReview = true
+                if !bills[i].reviewReason.contains(linkReason) {
+                    bills[i].reviewReason = bills[i].reviewReason.isEmpty
+                        ? linkReason : "\(bills[i].reviewReason)；\(linkReason)"
                 }
             }
         }
@@ -497,6 +626,7 @@ final class SessionManager {
     func removeBill(uid: String) {
         manifest.bills.removeAll { $0.uid == uid }
         manifest.needsReviewCount = manifest.bills.filter { $0.needsReview }.count
+        invalidateDerived()
         save()
     }
 
@@ -508,6 +638,7 @@ final class SessionManager {
             manifest.bills.append(bill)
         }
         manifest.needsReviewCount = manifest.bills.filter { $0.needsReview }.count
+        invalidateDerived()
         save()
     }
 
@@ -516,13 +647,19 @@ final class SessionManager {
         try FileManager.default.removeItem(at: rootDir)
     }
 
-    /// 持久化 manifest
+    /// 持久化 manifest（写失败写 stderr 留痕，不再无声吞掉）
     func save() {
+        // clear() 删过目录时先重建，保证后续保存仍能落盘
+        try? FileManager.default.createDirectory(at: rootDir, withIntermediateDirectories: true)
         let url = rootDir.appendingPathComponent("manifest.json")
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if let data = try? enc.encode(manifest) {
-            try? data.write(to: url, options: .atomic)
+        do {
+            let data = try enc.encode(manifest)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            FileHandle.standardError.write(Data(
+                "[SessionManager] manifest 保存失败: \(error.localizedDescription)\n".utf8))
         }
     }
 
@@ -540,7 +677,9 @@ final class SessionManager {
     ///   兜底         "0303 1436.51"
     @MainActor
     static func buildFilename(for bill: BillInfo) -> String {
-        let suf = ".pdf"
+        // 后缀跟源文件实际格式走（JPG/PNG 票据不能顶着 .pdf 的名字）
+        let srcExt = (bill.sourceFile as NSString).pathExtension.lowercased()
+        let suf = srcExt.isEmpty ? ".pdf" : ".\(srcExt)"
         let bt = bill.billType
         let f = bill.fields
 
@@ -566,7 +705,9 @@ final class SessionManager {
 
         switch bt {
         case .trainTicket:
-            let parts = [dateMmdd, route, fmtAmount].filter { !$0.isEmpty }
+            // 车次是 BillTypeFields 规格里的文件名组成（旧实现漏了，同日同线同额会撞名）
+            let trainNo = f["train_no"].flatMap { $0 } ?? ""
+            let parts = [dateMmdd, trainNo, route, fmtAmount].filter { !$0.isEmpty }
             return parts.isEmpty ? "火车票\(dateMmdd)\(suf)" : parts.joined(separator: " ") + suf
 
         case .flightItinerary:

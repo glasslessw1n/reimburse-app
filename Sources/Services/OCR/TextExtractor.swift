@@ -60,10 +60,20 @@ enum TextExtractor {
         }
 
         // 2. 走 OCR 路径（文字层是扫描 PDF 残留模板字 / 没文字）
-        // 2a. 检测是否是未裁切的登机凭证（A4 整页 → 裁切凭证区域）
-        let crop: CGRect? = PDFRenderer.needsBoardingPassCrop(pdfData: data)
-            ? CGRect(x: 78, y: 69, width: 271, height: 165)
-            : nil
+        // 2a. 登机凭证裁切必须有证据才启用：旧实现只看「第一页是 A4」就裁，
+        //     扫描版 A4 酒店发票/水单/增值税发票（最常见的无文字层文档）会被裁掉约八成内容。
+        //     证据 = 残留文字层含登机关键词，或整页快速 OCR 探测命中关键词。
+        var crop: CGRect? = nil
+        if PDFRenderer.needsBoardingPassCrop(pdfData: data) {
+            let keywords = ["登机", "乘机", "登机牌", "BOARDING", "Boarding"]
+            if keywords.contains(where: { trimmed.contains($0) }) {
+                crop = CGRect(x: 78, y: 69, width: 271, height: 165)
+            } else if let probe = PDFRenderer.firstPageImage(pdfData: data, dpi: 120),
+                      let probeText = try? await OCRService.recognize(cgImage: probe, level: .fast),
+                      keywords.contains(where: { probeText.contains($0) }) {
+                crop = CGRect(x: 78, y: 69, width: 271, height: 165)
+            }
+        }
 
         // 2b. 渲染（第一页用 crop 区域，其他页原样）
         let pages = PDFRenderer.render(pdfData: data, crop: crop)
