@@ -253,32 +253,4 @@ enum TripResolver {
         return s[idx..<endIdx].replacingOccurrences(of: "-", with: "")
     }
 
-    /// 两个 MMDD 之间的天数差（同年内）
-    static func absDateDiff(_ mmdd1: String, _ mmdd2: String) -> Int {
-        guard mmdd1.count >= 4, mmdd2.count >= 4,
-              let m1 = Int(mmdd1.prefix(2)), let d1 = Int(mmdd1.dropFirst(2).prefix(2)),
-              let m2 = Int(mmdd2.prefix(2)), let d2 = Int(mmdd2.dropFirst(2).prefix(2)) else {
-            return 99
-        }
-        let cal = Calendar.current
-        let year = cal.component(.year, from: Date())
-        guard let date1 = cal.date(from: DateComponents(year: year, month: m1, day: d1)),
-              let date2 = cal.date(from: DateComponents(year: year, month: m2, day: d2)) else {
-            return 99
-        }
-        var diff = abs(cal.dateComponents([.day], from: date1, to: date2).day ?? 99)
-        // 跨年启发式：同年内差距 >180 天，大概率是 12月↔1月 跨年；在 -1/0/+1 年的组合里取最小
-        if diff > 180 {
-            var best = diff
-            for dy1 in -1...1 {
-                for dy2 in -1...1 {
-                    guard let a = cal.date(from: DateComponents(year: year + dy1, month: m1, day: d1)),
-                          let b = cal.date(from: DateComponents(year: year + dy2, month: m2, day: d2)) else { continue }
-                    best = min(best, abs(cal.dateComponents([.day], from: a, to: b).day ?? 99))
-                }
-            }
-            diff = best
-        }
-        return diff
-    }
 }

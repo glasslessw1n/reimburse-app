@@ -296,18 +296,7 @@ struct TripResolverTests {
         #expect(TripResolver.mmddFromDateString("xxx") == "")
     }
 
-    /// 15. absDateDiff 工具方法
-    @Test func absDateDiff() {
-        #expect(TripResolver.absDateDiff("0901", "0910") == 9)
-        #expect(TripResolver.absDateDiff("0910", "0901") == 9)
-        #expect(TripResolver.absDateDiff("0910", "1010") == 30)
-    }
-
-    /// 16. 跨年日期差：12月底 ↔ 1月初 应算小差值，而不是 ~360 天
-    @Test func absDateDiffCrossYear() {
-        #expect(TripResolver.absDateDiff("1229", "0103") <= 10)
-        #expect(TripResolver.absDateDiff("0103", "1229") <= 10)
-    }
+    // 原 15/16（absDateDiff 工具方法）已随该无生产调用的死代码一并删除（四期清理）
 
     /// 17. 跨年行程：2025-12-30 出发 → 2026-01-02 返回，应合并为一段且 first/last 顺序正确
     @Test func crossYearTripOrdering() {

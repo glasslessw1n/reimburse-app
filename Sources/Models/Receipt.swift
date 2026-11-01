@@ -123,17 +123,6 @@ struct Receipt: Codable, Sendable {
         !error.isEmpty || confidence < 0.5 || requiredCoverage < 0.5
     }
 
-    // MARK: - 派生：用于行程归类的 key
-
-    /// 用于行程分组的"日期"：优先 departure_date / check_in_date / issue_date
-    var tripDate: String? {
-        field("departure_date")
-            ?? field("check_in_date")
-            ?? field("issue_date")
-    }
-
-    /// 用于行程分组的"城市"：优先 origin_city / city
-    var tripCity: String? {
-        field("origin_city") ?? field("city")
-    }
+    // 注：原 tripDate/tripCity 派生属性已删除——行程归类早已改用 BillInfo.dateRange/cities，
+    // 这两个属性无任何生产调用（四期死代码清理）
 }
