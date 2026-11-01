@@ -151,6 +151,7 @@ struct PackagingTests {
         #expect(totals["酒店"] == 500)
     }
 
+    @MainActor
     @Test func preflightFlagsHotelFolioWithoutInvoice() throws {
         let sid = UUID().uuidString.lowercased()
         let session = SessionManager(sid: sid)

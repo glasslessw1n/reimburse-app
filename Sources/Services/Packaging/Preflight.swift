@@ -28,6 +28,8 @@ struct PreflightReport: Sendable {
 
 enum Preflight {
 
+    /// SessionManager 是 @MainActor 隔离的，本检查与其同隔离域（调用方 PackageViewModel 亦然）
+    @MainActor
     static func check(session: SessionManager) -> PreflightReport {
         let manifest = session.manifest
         var report = PreflightReport()
