@@ -115,8 +115,22 @@ enum LLMPrompts {
    （city 从酒店抬头取"上海"，日期取实际入住/离店日，金额取数字）
 """
 
+    /// OCR 文本进入 prompt 的长度上限（字符）。
+    /// 小上下文模型（如 moonshot-v1-8k）装不下全文+长 system，超限时保留头尾——
+    /// 票据的关键信息（抬头/类型在头部，金额/合计在尾部）都在两端，中间多为明细行。
+    static let maxOCRChars = 6000
+
     /// 组装 user message（OCR 文本 + 文件名提示）
     static func buildUserMessage(ocrText: String, filename: String = "") -> String {
+        buildMessage(ocrText: cappedText(ocrText, limit: maxOCRChars), filename: filename)
+    }
+
+    /// 分类段专用：只发摘要（头部 + 尾部），类型判断不需要全文，省 token
+    static func buildClassifyMessage(ocrText: String, filename: String = "") -> String {
+        buildMessage(ocrText: cappedText(ocrText, limit: 1200), filename: filename)
+    }
+
+    private static func buildMessage(ocrText: String, filename: String) -> String {
         var parts: [String] = []
         if !filename.isEmpty {
             parts.append("文件名提示：`\(filename)`（可作为票据类型线索）")
@@ -124,6 +138,16 @@ enum LLMPrompts {
         parts.append("--- OCR 文本 ---")
         parts.append(ocrText)
         return parts.joined(separator: "\n\n")
+    }
+
+    /// 超限文本保留头 2/3 + 尾 1/3，中间以省略标记连接
+    static func cappedText(_ text: String, limit: Int) -> String {
+        guard text.count > limit else { return text }
+        let headCount = limit * 2 / 3
+        let tailCount = limit - headCount
+        return String(text.prefix(headCount))
+            + "\n\n【注：OCR 文本过长，中间部分已省略】\n\n"
+            + String(text.suffix(tailCount))
     }
 
     /// 第一段分类 prompt（短，只判类型，省 token）
@@ -140,6 +164,9 @@ enum LLMPrompts {
 # 约束
 - 只输出 JSON，不要任何解释
 - 不确定时 confidence 给低分（<0.7），receipt_type 给 "other"
+- **增值税发票不是独立类型**：增值税普通/专用/电子发票按消费内容归类（住宿→`hotel_invoice`、餐饮→`dining`、打车→`didi_invoice`、加油→`gas_invoice`、通信→`telecom`、其他→`other`），不要输出 `vat_invoice_general`/`vat_invoice_special`
+- 登机牌（含「登机牌」「BOARDING PASS」字样、无票价）→ `boarding_pass`；航空公司/航旅平台开具的电子行程单（含票价、票号）→ `flight_itinerary`
+- 酒店结账单/水单（有入住/离店日期、房晚明细）→ `hotel_folio`；税务发票抬头的住宿费发票 → `hotel_invoice`
 """
 
     /// 第二段抽取 prompt（只针对某一类型，字段清单更聚焦、更少串类）

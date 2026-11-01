@@ -15,14 +15,20 @@ import Foundation
 
 enum ExcelBuilder {
 
-    /// 生成 xlsx 文件
-    /// - Parameters:
-    ///   - bills: 所有 BillInfo
-    ///   - outputURL: 输出 .xlsx 路径
+    /// 生成 xlsx 文件（按平铺 bills 现场分组；无 finalize 结果时用）
     static func build(bills: [BillInfo], homeCities: Set<String>, outputURL: URL) throws {
+        try writeXLSX(sheetXML: buildSheet(bills: bills, homeCities: homeCities), outputURL: outputURL)
+    }
+
+    /// 生成 xlsx 文件（直接用 manifest 里 finalize 好的 trips/local，与 ZIP 内容同源，
+    /// 避免 Excel 再跑一遍分组导致两侧行程划分不一致）
+    static func build(trips: [TripGroup], local: [BillInfo], outputURL: URL) throws {
+        try writeXLSX(sheetXML: buildSheet(trips: trips, localBills: local), outputURL: outputURL)
+    }
+
+    private static func writeXLSX(sheetXML: String, outputURL: URL) throws {
         // 1. 构造内存中的所有 XML
         let workbookXML = buildWorkbook()
-        let sheetXML = buildSheet(bills: bills, homeCities: homeCities)
         let stylesXML = Self.stylesXML
 
         // 2. 临时目录写所有 XML 文件
@@ -179,9 +185,14 @@ enum ExcelBuilder {
 
     // MARK: - sheet1.xml 构建
 
-    /// `xl/worksheets/sheet1.xml`
+    /// `xl/worksheets/sheet1.xml`（按平铺 bills 现场分组）
     static func buildSheet(bills: [BillInfo], homeCities: Set<String>) -> String {
         let (trips, localBills) = TripResolver.assignTrips(bills: bills, homeCities: homeCities)
+        return buildSheet(trips: trips, localBills: localBills)
+    }
+
+    /// `xl/worksheets/sheet1.xml`（用现成的行程分组渲染，与 ZIP 同源）
+    static func buildSheet(trips: [TripGroup], localBills: [BillInfo]) -> String {
         var totalsByCategory: [String: Double] = [
             "自驾车": 0, "交通": 0, "酒店": 0, "滴滴": 0, "餐饮": 0, "通信": 0, "其他": 0
         ]
@@ -219,13 +230,52 @@ enum ExcelBuilder {
 
     /// 生成 <row r="idx">cells</row>
     /// cells: [(列字母, 值, style)] —— 值是 String
-    private static func makeRow(idx: Int, cells: [(String, String, Int)]) -> String {
+    /// amountC 非 nil 时，C 列改写数值单元格（财务可用 SUM 再加工；纯文本金额不参与计算）
+    private static func makeRow(idx: Int, cells: [(String, String, Int)], amountC: Double? = nil) -> String {
         var pieces: [String] = ["<row r=\"\(idx)\">"]
         for (col, value, style) in cells {
-            pieces.append(Self.makeInlineStringCell(ref: "\(col)\(idx)", value: value, style: style))
+            if col == "C", let amount = amountC {
+                pieces.append(Self.makeNumberCell(ref: "\(col)\(idx)", value: amount, style: style))
+            } else {
+                pieces.append(Self.makeInlineStringCell(ref: "\(col)\(idx)", value: value, style: style))
+            }
         }
         pieces.append("</row>")
         return pieces.joined()
+    }
+
+    /// 滴滴覆盖判定：一张发票可覆盖若干张行程单（金额之和相等），返回被覆盖的行程单下标集合。
+    /// 旧实现只认“单张金额恰好相等”，汇总发票（一张盖多段）覆盖不了任何单张，
+    /// 发票金额与全部行程单金额会被重复计入。按分（整数）做子集和匹配避免浮点误差；
+    /// 候选按金额降序带剪枝回溯，节点上限兜底（超限时宁可少覆盖，不错覆盖）。
+    static func didiCoveredTrips(invoiceAmounts: [Double], tripAmounts: [Double]) -> Set<Int> {
+        func cents(_ v: Double) -> Int { Int((v * 100).rounded()) }
+        var remaining = tripAmounts.indices.filter { tripAmounts[$0] > 0 }
+        var covered = Set<Int>()
+        for inv in invoiceAmounts where inv > 0 {
+            let target = cents(inv)
+            guard target > 0 else { continue }
+            let candidates = remaining.sorted { tripAmounts[$0] > tripAmounts[$1] }
+            var chosen: [Int] = []
+            var nodes = 0
+            func search(_ pos: Int, _ sum: Int) -> Bool {
+                if sum == target { return true }
+                if sum > target || pos >= candidates.count { return false }
+                nodes += 1
+                if nodes > 20000 { return false }
+                let idx = candidates[pos]
+                chosen.append(idx)
+                if search(pos + 1, sum + cents(tripAmounts[idx])) { return true }
+                chosen.removeLast()
+                return search(pos + 1, sum)
+            }
+            if search(0, 0) {
+                covered.formUnion(chosen)
+                let chosenSet = Set(chosen)
+                remaining.removeAll { chosenSet.contains($0) }
+            }
+        }
+        return covered
     }
 
     /// 数字单元格
@@ -302,7 +352,7 @@ enum ExcelBuilder {
                     ("C", Self.fmtNumber(b.amount), 4),
                     ("D", "", 0),
                     ("E", b.sourceFile, 0)
-                ]))
+                ], amountC: b.amount))
                 rowIdx += 1
             }
             // 拼小计行（C 列用 number cell）：手拼避免 cells 限制
@@ -361,25 +411,45 @@ enum ExcelBuilder {
             totals["交通", default: 0] += sub
         }
 
-        // 2. 酒店（水单+发票按金额配对，同一住宿只计一次，避免重复入表）
+        // 2. 酒店（同一住宿只计一次。配对以 finalize 写入的 pairedFolioUID 为准——
+        //    旧实现在这里按“首个金额相等”另配一遍，一票多住时会把发票再计一次；
+        //    老清单没有任何配对信息时才回退金额配对）
         if !hotelFolios.isEmpty || !hotelInvoices.isEmpty {
             var sub: Double = 0
-            var usedInvoices = Set<Int>()
+            let folioUIDs = Set(hotelFolios.map { $0.uid })
+            let hasPairingInfo = hotelInvoices.contains { $0.pairedFolioUID != nil }
+            var folioHasInvoice: [String: Bool] = [:]
+            var standaloneInvoices: [BillInfo] = []
+            if hasPairingInfo {
+                for folio in hotelFolios {
+                    folioHasInvoice[folio.uid] = hotelInvoices.contains { $0.pairedFolioUID == folio.uid }
+                }
+                standaloneInvoices = hotelInvoices.filter { inv in
+                    !(inv.pairedFolioUID.map { folioUIDs.contains($0) } ?? false)
+                }
+            } else {
+                var used = Set<Int>()
+                for folio in hotelFolios {
+                    if let i = hotelInvoices.indices.first(where: { i in
+                        !used.contains(i) && abs(hotelInvoices[i].amount - folio.amount) < 0.01
+                    }) {
+                        used.insert(i)
+                        folioHasInvoice[folio.uid] = true
+                    } else {
+                        folioHasInvoice[folio.uid] = false
+                    }
+                }
+                standaloneInvoices = hotelInvoices.indices.filter { !used.contains($0) }.map { hotelInvoices[$0] }
+            }
 
             for folio in hotelFolios {
-                let matchedIdx = hotelInvoices.indices.first { i in
-                    !usedInvoices.contains(i) && abs(hotelInvoices[i].amount - folio.amount) < 0.01
-                }
-                let hasInvoice = matchedIdx != nil
-                if let i = matchedIdx { usedInvoices.insert(i) }
                 let range = Self.hotelDateRange(folio)
                 let city = folio.fields["city"]?.flatMap { $0 } ?? folio.fields["hotel_name"]?.flatMap { $0 } ?? ""
                 if folio.amount > 0 { sub += folio.amount; tripTotal += folio.amount }
-                rows.append(Self.hotelRow(range: range, city: city, amount: folio.amount, hasInvoice: hasInvoice, rowIdx: rowIdx))
+                rows.append(Self.hotelRow(range: range, city: city, amount: folio.amount, hasInvoice: folioHasInvoice[folio.uid] ?? false, rowIdx: rowIdx))
                 rowIdx += 1
             }
-            for i in hotelInvoices.indices where !usedInvoices.contains(i) {
-                let inv = hotelInvoices[i]
+            for inv in standaloneInvoices {
                 let range = Self.hotelDateRange(inv)
                 let city = inv.fields["city"]?.flatMap { $0 } ?? inv.fields["hotel_name"]?.flatMap { $0 } ?? ""
                 if inv.amount > 0 { sub += inv.amount; tripTotal += inv.amount }
@@ -401,17 +471,15 @@ enum ExcelBuilder {
             totals["酒店", default: 0] += sub
         }
 
-        // 3. 滴滴：发票金额计入；无发票覆盖的行程单金额也计入，避免静默漏钱
+        // 3. 滴滴：发票金额计入；未被发票覆盖的行程单金额也计入，避免静默漏钱。
+        //    覆盖按子集和判定（一张汇总发票可覆盖多张行程单），见 didiCoveredTrips
         if !didiTrip.isEmpty || !didiInvoice.isEmpty {
             var didiTotal: Double = 0
-            var coveredTrips = Set<Int>()
-            for inv in didiInvoice {
-                if inv.amount > 0 { didiTotal += inv.amount; tripTotal += inv.amount }
-                if let ti = didiTrip.indices.first(where: {
-                    !coveredTrips.contains($0)
-                        && didiTrip[$0].amount > 0
-                        && abs(didiTrip[$0].amount - inv.amount) < 0.01
-                }) { coveredTrips.insert(ti) }
+            let coveredTrips = Self.didiCoveredTrips(
+                invoiceAmounts: didiInvoice.map { $0.amount },
+                tripAmounts: didiTrip.map { $0.amount })
+            for inv in didiInvoice where inv.amount > 0 {
+                didiTotal += inv.amount; tripTotal += inv.amount
             }
             for ti in didiTrip.indices where !coveredTrips.contains(ti) && didiTrip[ti].amount > 0 {
                 didiTotal += didiTrip[ti].amount
@@ -449,9 +517,21 @@ enum ExcelBuilder {
                     ("C", Self.fmtNumber(b.amount), 4),
                     ("D", "", 0),
                     ("E", b.sourceFile, 0)
-                ]))
+                ], amountC: b.amount))
                 rowIdx += 1
             }
+            // 餐饮小计（与其余分类对齐，方便人工核对）
+            let subRow = "<row r=\"\(rowIdx)\">"
+                + Self.makeInlineStringCell(ref: "A\(rowIdx)", value: "", style: 0)
+                + Self.makeInlineStringCell(ref: "B\(rowIdx)", value: "餐饮小计", style: 6)
+                + (sub > 0
+                    ? Self.makeNumberCell(ref: "C\(rowIdx)", value: sub, style: 3)
+                    : Self.makeInlineStringCell(ref: "C\(rowIdx)", value: "-", style: 3))
+                + Self.makeInlineStringCell(ref: "D\(rowIdx)", value: "", style: 0)
+                + Self.makeInlineStringCell(ref: "E\(rowIdx)", value: "", style: 0)
+                + "</row>"
+            rows.append(subRow)
+            rowIdx += 1
             totals["餐饮", default: 0] += sub
         }
 
@@ -510,7 +590,7 @@ enum ExcelBuilder {
                     ("C", Self.fmtNumber(b.amount), 4),
                     ("D", "", 0),
                     ("E", b.sourceFile, 0)
-                ]))
+                ], amountC: b.amount))
                 rowIdx += 1
             }
             rows.append(Self.makeRow(idx: rowIdx, cells: [
@@ -519,23 +599,20 @@ enum ExcelBuilder {
                 ("C", Self.fmtNumber(sub), 4),
                 ("D", "", 0),
                 ("E", "", 0)
-            ]))
+            ], amountC: sub))
             rowIdx += 1
             totals["通信", default: 0] += sub
             localTotal += sub
         }
 
-        // 滴滴(本地)
+        // 滴滴(本地)（覆盖判定与行程段同一套子集和逻辑）
         if !didiTrip.isEmpty || !didiInvoice.isEmpty {
             var didiTotal: Double = 0
-            var coveredTrips = Set<Int>()
-            for inv in didiInvoice {
-                if inv.amount > 0 { didiTotal += inv.amount }
-                if let ti = didiTrip.indices.first(where: {
-                    !coveredTrips.contains($0)
-                        && didiTrip[$0].amount > 0
-                        && abs(didiTrip[$0].amount - inv.amount) < 0.01
-                }) { coveredTrips.insert(ti) }
+            let coveredTrips = Self.didiCoveredTrips(
+                invoiceAmounts: didiInvoice.map { $0.amount },
+                tripAmounts: didiTrip.map { $0.amount })
+            for inv in didiInvoice where inv.amount > 0 {
+                didiTotal += inv.amount
             }
             for ti in didiTrip.indices where !coveredTrips.contains(ti) && didiTrip[ti].amount > 0 {
                 didiTotal += didiTrip[ti].amount
@@ -547,7 +624,7 @@ enum ExcelBuilder {
                     ("C", Self.fmtNumber(didiTotal), 4),
                     ("D", "", 0),
                     ("E", "", 0)
-                ]))
+                ], amountC: didiTotal))
                 rowIdx += 1
                 totals["滴滴", default: 0] += didiTotal
                 localTotal += didiTotal
@@ -567,7 +644,7 @@ enum ExcelBuilder {
                     ("C", Self.fmtNumber(b.amount), 4),
                     ("D", "", 0),
                     ("E", b.sourceFile, 0)
-                ]))
+                ], amountC: b.amount))
                 rowIdx += 1
             }
             totals["餐饮", default: 0] += sub
@@ -587,7 +664,7 @@ enum ExcelBuilder {
                     ("C", Self.fmtNumber(b.amount), 4),
                     ("D", b.fields["seller_name"]?.flatMap { $0 } ?? "", 0),
                     ("E", b.sourceFile, 0)
-                ]))
+                ], amountC: b.amount))
                 rowIdx += 1
             }
             totals["其他", default: 0] += sub
@@ -626,12 +703,13 @@ enum ExcelBuilder {
         totals: [String: Double]
     ) -> Int {
         let grandTotal = totals.values.reduce(0, +)
+        // 分类明细与总计同精度（两位小数）：旧实现用 Int() 截断，括号内相加与总计对不上
         var detail = ""
-        if (totals["自驾车"] ?? 0) > 0 { detail += "自驾车:\(Int(totals["自驾车"] ?? 0))  " }
-        detail += "交通:\(Int(totals["交通"] ?? 0))  酒店:\(Int(totals["酒店"] ?? 0))  滴滴:\(Int(totals["滴滴"] ?? 0))"
-        if (totals["餐饮"] ?? 0) > 0 { detail += "  餐饮:\(Int(totals["餐饮"] ?? 0))" }
-        if (totals["通信"] ?? 0) > 0 { detail += "  通信:\(Int(totals["通信"] ?? 0))" }
-        if (totals["其他"] ?? 0) > 0 { detail += "  其他:\(Int(totals["其他"] ?? 0))" }
+        if (totals["自驾车"] ?? 0) > 0 { detail += "自驾车:\(Self.fmtNumber(totals["自驾车"] ?? 0))  " }
+        detail += "交通:\(Self.fmtNumber(totals["交通"] ?? 0))  酒店:\(Self.fmtNumber(totals["酒店"] ?? 0))  滴滴:\(Self.fmtNumber(totals["滴滴"] ?? 0))"
+        if (totals["餐饮"] ?? 0) > 0 { detail += "  餐饮:\(Self.fmtNumber(totals["餐饮"] ?? 0))" }
+        if (totals["通信"] ?? 0) > 0 { detail += "  通信:\(Self.fmtNumber(totals["通信"] ?? 0))" }
+        if (totals["其他"] ?? 0) > 0 { detail += "  其他:\(Self.fmtNumber(totals["其他"] ?? 0))" }
 
         let text = "报销总计: ¥\(Self.fmtNumber(grandTotal))  (\(detail))"
         rows.append(Self.makeMergedRow(idx: startRow, text: text, style: 7))

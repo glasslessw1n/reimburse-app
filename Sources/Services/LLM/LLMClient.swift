@@ -23,6 +23,17 @@ struct LLMConfig {
         model: "gpt-4o-mini",
         timeout: 60
     )
+
+    /// 本地端点（Ollama / vLLM 等）：回环地址或 .local 主机，通常不需要 API Key
+    var isLocalEndpoint: Bool {
+        guard let host = baseURL.host?.lowercased() else { return false }
+        return host == "localhost" || host == "127.0.0.1" || host == "::1" || host.hasSuffix(".local")
+    }
+
+    /// 是否已配置：有 Key，或本地端点允许空 Key
+    var isConfigured: Bool {
+        !apiKey.isEmpty || isLocalEndpoint
+    }
 }
 
 enum LLMError: LocalizedError {
@@ -79,7 +90,8 @@ struct LLMClient {
     /// - Note: 当 useJSONFormat=true 且 system prompt 不含 "json" 时，自动追加提示；
     ///         若服务端仍 400，自动回退到不带 response_format 重试。
     func chat(system: String, user: String, temperature: Double = 0.0, useJSONFormat: Bool = true) async throws -> String {
-        guard !config.apiKey.isEmpty else { throw LLMError.notConfigured }
+        // 本地端点（Ollama/vLLM）允许空 Key；云端无 Key 直接报未配置
+        guard config.isConfigured else { throw LLMError.notConfigured }
 
         let url = config.baseURL.appendingPathComponent("chat/completions")
 
@@ -102,7 +114,9 @@ struct LLMClient {
             req.httpMethod = "POST"
             req.timeoutInterval = config.timeout
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+            if !config.apiKey.isEmpty {
+                req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+            }
 
             let body = ChatRequest(
                 model: config.model,
@@ -143,20 +157,46 @@ struct LLMClient {
     }
 
     /// 调 LLM 拿 JSON dict（自动剥 markdown 代码块）
+    /// 重试分级：永久性 4xx（401/403/404/422 等）不重试、直接抛错；
+    /// 429/5xx/网络错误/输出畸形才指数退避重试（1s/2s/4s，上限 8s）。
+    /// 取消（CancellationError / URLError.cancelled）一路抛出，绝不吞掉转重试。
     func chatJSON(system: String, user: String, maxRetries: Int = 2) async throws -> [String: Any] {
         var lastError: Error?
         for attempt in 0...maxRetries {
+            try Task.checkCancellation()
             do {
                 let content = try await chat(system: system, user: user)
                 return try JSONParser.extractFirstJSONObject(from: content)
             } catch {
+                if error is CancellationError { throw error }
+                if let urlError = error as? URLError, urlError.code == .cancelled {
+                    throw CancellationError()
+                }
                 lastError = error
+                guard Self.isRetryable(error) else { throw error }
                 if attempt < maxRetries {
-                    try? await Task.sleep(nanoseconds: UInt64(1_500_000_000 * (attempt + 1)))
+                    let delay = min(8.0, pow(2.0, Double(attempt)))
+                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 }
             }
         }
         throw LLMError.allRetriesFailed(lastError?.localizedDescription ?? "unknown")
+    }
+
+    /// 错误是否值得重试（内部逻辑，单测覆盖）
+    static func isRetryable(_ error: Error) -> Bool {
+        switch error {
+        case LLMError.http(let code, _):
+            return code == 429 || (500...599).contains(code)
+        case LLMError.notConfigured:
+            return false
+        case LLMError.parseFailed, LLMError.invalidResponse:
+            return true   // 模型偶发输出畸形/空响应，重试有意义
+        case is URLError:
+            return true   // 网络抖动（.cancelled 已在调用处单独拦截抛出）
+        default:
+            return true
+        }
     }
 
     /// 测试连接 + 拉模型列表
@@ -164,7 +204,9 @@ struct LLMClient {
         let url = config.baseURL.appendingPathComponent("models")
         var req = URLRequest(url: url)
         req.timeoutInterval = 15
-        req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        if !config.apiKey.isEmpty {
+            req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        }
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let code = (resp as? HTTPURLResponse)?.statusCode ?? -1

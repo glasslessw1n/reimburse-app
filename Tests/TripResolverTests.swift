@@ -296,18 +296,7 @@ struct TripResolverTests {
         #expect(TripResolver.mmddFromDateString("xxx") == "")
     }
 
-    /// 15. absDateDiff 工具方法
-    @Test func absDateDiff() {
-        #expect(TripResolver.absDateDiff("0901", "0910") == 9)
-        #expect(TripResolver.absDateDiff("0910", "0901") == 9)
-        #expect(TripResolver.absDateDiff("0910", "1010") == 30)
-    }
-
-    /// 16. 跨年日期差：12月底 ↔ 1月初 应算小差值，而不是 ~360 天
-    @Test func absDateDiffCrossYear() {
-        #expect(TripResolver.absDateDiff("1229", "0103") <= 10)
-        #expect(TripResolver.absDateDiff("0103", "1229") <= 10)
-    }
+    // 原 15/16（absDateDiff 工具方法）已随该无生产调用的死代码一并删除（四期清理）
 
     /// 17. 跨年行程：2025-12-30 出发 → 2026-01-02 返回，应合并为一段且 first/last 顺序正确
     @Test func crossYearTripOrdering() {
@@ -326,5 +315,37 @@ struct TripResolverTests {
         #expect(TripResolver.fullDateDiff("2025-12-29", "2026-01-03") == 5)
         #expect(TripResolver.fullDateDiff("2026-01-03", "2025-12-29") == 5)
         #expect(TripResolver.fullDateDiff("2026-01-01", "2026-01-01") == 0)
+    }
+
+    /// 补件归到已闭合行程后，不应把该行程“重新打开”：
+    /// 随后的 home 出发锚点必须开新段（旧实现会把整段新行程吞进旧行程）
+    @Test func supplementDoesNotReopenClosedTrip() {
+        let bills = [
+            anchor(.boardingPass, from: "重庆", to: "厦门", date: "2026-09-10"),
+            anchor(.boardingPass, from: "厦门", to: "重庆", date: "2026-09-12"),   // 闭合 Trip A
+            anchor(.trainTicket, from: "厦门", to: "福州", date: "2026-09-13"),    // 补件 → 归 Trip A
+            anchor(.boardingPass, from: "重庆", to: "北京", date: "2026-09-20"),   // 新一段出发
+            anchor(.boardingPass, from: "北京", to: "重庆", date: "2026-09-22"),
+        ]
+        let r = resolve(bills)
+        #expect(r.trips.count == 2, "补件不应重开已闭合行程\n\(dumpTrips(r.trips))")
+        #expect(r.trips[0].bills.count == 3)
+        #expect(r.trips[1].firstMMDD == "0920")
+    }
+
+    /// 长行程中部的酒店水单：日期区间与行程区间重叠即归属
+    /// （旧实现只看与首尾端点距离，距首尾都 >7 天会被误放本地）
+    @Test func midTripHotelAttachesByIntervalOverlap() {
+        let bills = [
+            anchor(.boardingPass, from: "重庆", to: "厦门", date: "2026-09-01"),
+            anchor(.boardingPass, from: "厦门", to: "重庆", date: "2026-09-20"),
+            BillInfo(billType: .hotelFolio, amount: 900, sourceFile: "folio.pdf",
+                     fields: ["check_in_date": "2026-09-09", "check_out_date": "2026-09-11", "city": "厦门"]),
+        ]
+        let r = resolve(bills)
+        #expect(r.trips.count == 1)
+        #expect(r.trips[0].bills.contains { $0.billType == .hotelFolio },
+                "行程中部的水单应归入行程\n\(dumpTrips(r.trips))")
+        #expect(r.local.isEmpty)
     }
 }

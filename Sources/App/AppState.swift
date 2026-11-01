@@ -51,12 +51,15 @@ final class AppState {
     /// 是否弹出设置面板（供首页引导、状态徽章、⌘, 快捷键共用）
     var showSettings = false
 
+    /// 是否弹出「关于」面板（应用菜单触发）
+    var showAbout = false
+
     /// 全局设置
     let settingsStore = LLMSettingsStore()
 
     /// 启动时读 .env，并探测 LLM 是否真可用
     init() {
-        llmConfigured = !settingsStore.settings.apiKey.isEmpty
+        llmConfigured = settingsStore.settings.llmConfig.isConfigured
         llmAvailable = llmConfigured  // TODO: 启动时 ping 一次
         ocrAvailable = TextExtractor.isAvailable
     }

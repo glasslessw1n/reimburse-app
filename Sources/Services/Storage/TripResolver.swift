@@ -31,6 +31,8 @@ enum TripResolver {
 
     /// 主入口
     static func assignTrips(bills: [BillInfo], homeCities: Set<String>) -> (trips: [TripGroup], local: [BillInfo]) {
+        // 常驻地集合与票据城市用同一套规范化（trim+小写），避免写法差异让常驻地判断失效
+        let homeCities = Set(homeCities.map { $0.trimmingCharacters(in: .whitespaces).lowercased() })
         var anchors: [BillInfo] = []
         var nonAnchors: [BillInfo] = []
         for b in bills {
@@ -70,7 +72,13 @@ enum TripResolver {
             //   - anchor 城市属于**之前某段 trip** → 归那个 trip（封闭后吸收）
             //   - 否则 → 开新 trip
             var startNew = false
+            var supplementIdx: Int? = nil   // 补件归属的旧行程（不改变当前行程的开合状态）
             if currentIdx == nil {
+                startNew = true
+            } else if let ci = currentIdx, !currentTripClosed, isHomeDeparture,
+                      fullDateDiff(aFirstFull, groupLast[ci]) > 14 {
+                // 间隔兜底：上一段迟迟未闭合（返程票缺失）且新出发已在其末日 14 天后，
+                // 强制开新段——不再当作“漏返程补充”把两段行程粘在一起
                 startNew = true
             } else if isHomeArrival && !currentTripClosed {
                 // 闭合当前 trip + 把 anchor 归到当前 trip
@@ -97,9 +105,10 @@ enum TripResolver {
                         }
                     }
                     if let mIdx = matchedIdx {
-                        // 命中任何一个 trip（含当前）：归那个 trip，补件
-                        currentIdx = mIdx
-                        currentTripClosed = false  // 重新激活（接受后续 anchor）
+                        // 补件：只归属到命中的旧行程，**不重新打开它**。
+                        // 旧实现把 currentIdx 切回旧组并置未闭合，随后新一段的出发锚点
+                        // 会被当作“漏返程补充”吞进旧行程，整段行程并入上一段。
+                        supplementIdx = mIdx
                         startNew = false
                     } else {
                         startNew = true  // 无任何 trip 命中 → 开新
@@ -121,7 +130,7 @@ enum TripResolver {
                 currentTripClosed = false
             }
 
-            if let idx = currentIdx {
+            if let idx = supplementIdx ?? currentIdx {
                 // 用完整日期比较（跨年正确）扩展 trip 的 first/last
                 if aFirstFull < groupFirst[idx] {
                     groupFirst[idx] = aFirstFull
@@ -146,14 +155,25 @@ enum TripResolver {
         // non-anchor：按「所有相关完整日期」就近归到 trip（≤7 天）
         var local: [BillInfo] = []
         for non in nonAnchors {
-            guard let firstDate = fullDatePool(non).min() else {
+            let pool = fullDatePool(non)
+            guard let firstDate = pool.min(), let lastDate = pool.max() else {
                 local.append(non)
                 continue
             }
             var bestIdx: Int? = nil
             var bestDiff = Int.max
             for i in groups.indices {
-                let d = min(fullDateDiff(firstDate, groupFirst[i]), fullDateDiff(firstDate, groupLast[i]))
+                // 区间距离：票据日期区间与行程区间重叠记 0——长行程中部的票、
+                // 入住早但离店落在行程内的水单都能归属（旧实现只看与首尾端点的
+                // 距离，这类票距首尾都可能 >7 天而被误放“本地”）
+                let d: Int
+                if lastDate >= groupFirst[i] && firstDate <= groupLast[i] {
+                    d = 0
+                } else if lastDate < groupFirst[i] {
+                    d = fullDateDiff(lastDate, groupFirst[i])
+                } else {
+                    d = fullDateDiff(firstDate, groupLast[i])
+                }
                 if d < bestDiff { bestIdx = i; bestDiff = d }
             }
             if let idx = bestIdx, bestDiff <= 7 {
@@ -233,32 +253,4 @@ enum TripResolver {
         return s[idx..<endIdx].replacingOccurrences(of: "-", with: "")
     }
 
-    /// 两个 MMDD 之间的天数差（同年内）
-    static func absDateDiff(_ mmdd1: String, _ mmdd2: String) -> Int {
-        guard mmdd1.count >= 4, mmdd2.count >= 4,
-              let m1 = Int(mmdd1.prefix(2)), let d1 = Int(mmdd1.dropFirst(2).prefix(2)),
-              let m2 = Int(mmdd2.prefix(2)), let d2 = Int(mmdd2.dropFirst(2).prefix(2)) else {
-            return 99
-        }
-        let cal = Calendar.current
-        let year = cal.component(.year, from: Date())
-        guard let date1 = cal.date(from: DateComponents(year: year, month: m1, day: d1)),
-              let date2 = cal.date(from: DateComponents(year: year, month: m2, day: d2)) else {
-            return 99
-        }
-        var diff = abs(cal.dateComponents([.day], from: date1, to: date2).day ?? 99)
-        // 跨年启发式：同年内差距 >180 天，大概率是 12月↔1月 跨年；在 -1/0/+1 年的组合里取最小
-        if diff > 180 {
-            var best = diff
-            for dy1 in -1...1 {
-                for dy2 in -1...1 {
-                    guard let a = cal.date(from: DateComponents(year: year + dy1, month: m1, day: d1)),
-                          let b = cal.date(from: DateComponents(year: year + dy2, month: m2, day: d2)) else { continue }
-                    best = min(best, abs(cal.dateComponents([.day], from: a, to: b).day ?? 99))
-                }
-            }
-            diff = best
-        }
-        return diff
-    }
 }

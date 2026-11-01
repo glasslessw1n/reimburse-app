@@ -104,10 +104,16 @@ private struct TripCard: View {
             .joined(separator: " ")
     }
 
-    /// 未配对到发票的酒店水单数量（金额匹配）
+    /// 未配对到发票的酒店水单数量
+    /// 口径与 Excel 共用 finalize 的配对结果（pairedFolioUID）；无配对信息（老清单）才回退金额匹配，
+    /// 避免界面、Excel、打包三处各配一遍、结论互相矛盾
     private var missingInvoiceCount: Int {
         let folios = trip.bills.filter { $0.billType == .hotelFolio }
         let invoices = trip.bills.filter { $0.billType == .hotelInvoice }
+        if invoices.contains(where: { $0.pairedFolioUID != nil }) {
+            let pairedFolioUIDs = Set(invoices.compactMap { $0.pairedFolioUID })
+            return folios.filter { !pairedFolioUIDs.contains($0.uid) }.count
+        }
         var used = Set<Int>()
         var missing = 0
         for folio in folios {

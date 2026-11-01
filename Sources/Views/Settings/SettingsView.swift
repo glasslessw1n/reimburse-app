@@ -25,9 +25,17 @@ struct SettingsView: View {
     @State private var testResult: String = ""
     @State private var testColor: Color = .secondary
     @State private var isTesting = false
+
+    /// 本地服务（Ollama/vLLM 等回环地址）允许空 Key：拉取列表/测试连接不因空 Key 禁用
+    private var keyRequirementMet: Bool {
+        if !apiKey.isEmpty { return true }
+        guard let host = URL(string: baseURL)?.host?.lowercased() else { return false }
+        return host == "localhost" || host == "127.0.0.1" || host == "::1" || host.hasSuffix(".local")
+    }
     @State private var availableModels: [String] = []
     @State private var isFetchingModels = false
     @State private var showSavedTip = false
+    @State private var saveError: String?
     @State private var manualBaseURL: Bool = false  // 用户改过 baseURL → 不再自动覆盖
 
     /// 标签宽度（行式布局：标签在左、输入框在右）
@@ -132,7 +140,7 @@ struct SettingsView: View {
                         }
                         .buttonStyle(.bordered)
                         .hoverLift()
-                        .disabled(apiKey.isEmpty || baseURL.isEmpty || isFetchingModels)
+                        .disabled(!keyRequirementMet || baseURL.isEmpty || isFetchingModels)
                     }
                 }
 
@@ -196,9 +204,16 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.bordered)
                     .hoverLift()
-                    .disabled(apiKey.isEmpty || baseURL.isEmpty || isTesting)
+                    .disabled(!keyRequirementMet || baseURL.isEmpty || isTesting)
 
                     Spacer()
+
+                    if let saveError {
+                        Text(saveError)
+                            .font(.callout)
+                            .foregroundStyle(.red)
+                            .lineLimit(2)
+                    }
 
                     Button {
                         save()
@@ -282,8 +297,16 @@ struct SettingsView: View {
             .map { String($0).trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
         state.settingsStore.settings = s
-        try? state.settingsStore.save()
-        state.llmConfigured = !s.apiKey.isEmpty
+        do {
+            try state.settingsStore.save()
+        } catch {
+            // 保存失败不许假报成功：红字提示，且不点亮“已保存”
+            saveError = "保存失败：\(error.localizedDescription)"
+            return
+        }
+        saveError = nil
+        state.llmConfigured = s.llmConfig.isConfigured
+        state.llmAvailable = state.llmConfigured   // 徽章与配置状态同步（旧实现保存后徽章不亮）
 
         withAnimation { showSavedTip = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {

@@ -10,7 +10,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 echo "→ native/ 根目录: $ROOT_DIR"
 cd "$ROOT_DIR"
 
-ARCHS="${ARCHS:-$(uname -m)}"
+# 默认双架构 Universal（Intel + Apple Silicon 都能跑）；可用 ARCHS 环境变量覆盖
+ARCHS="${ARCHS:-arm64 x86_64}"
 echo "→ 目标架构: $ARCHS"
 
 echo ""
@@ -35,6 +36,18 @@ if [ ! -d "$APP_PATH" ]; then
 fi
 echo "  ✓ $APP_PATH ($(du -sh "$APP_PATH" | cut -f1))"
 
+# 架构校验：产物必须真含目标架构（防单架构冒充 Universal）
+BIN_NAME="$(ls "$APP_PATH/Contents/MacOS/" | head -1)"
+BIN_PATH="$APP_PATH/Contents/MacOS/$BIN_NAME"
+echo "  主程序架构: $(lipo -info "$BIN_PATH")"
+for a in $ARCHS; do
+    if ! lipo -info "$BIN_PATH" | grep -q "$a"; then
+        echo "  ❌ 产物缺少架构 $a，终止打包"
+        exit 1
+    fi
+done
+echo "  ✓ 架构校验通过"
+
 echo ""
 echo "=== 步骤 2: ad-hoc 签名 ==="
 if codesign --force --deep --options runtime \
@@ -50,11 +63,15 @@ fi
 codesign -dv "$APP_PATH" 2>&1 | grep -E "Identifier|Format|Signature" | head -3
 
 echo ""
-echo "=== 步骤 3: 打 dmg ==="
+echo "=== 步骤 3: 打 dmg（带 Applications 软链，拖拽即可安装） ==="
 DMG_PATH="$ROOT_DIR/报销整理.dmg"
+STAGE_DIR="$(mktemp -d)"
+cp -R "$APP_PATH" "$STAGE_DIR/"
+ln -s /Applications "$STAGE_DIR/Applications"
 hdiutil create -volname "报销整理" \
-    -srcfolder "$APP_PATH" \
+    -srcfolder "$STAGE_DIR" \
     -ov -format UDZO "$DMG_PATH" 2>&1 | tail -2
+rm -rf "$STAGE_DIR"
 echo "  ✓ $DMG_PATH ($(du -h "$DMG_PATH" | cut -f1))"
 
 echo ""

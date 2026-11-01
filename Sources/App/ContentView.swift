@@ -31,6 +31,10 @@ struct ContentView: View {
                 .environment(state)
                 .presentationBackground(.ultraThinMaterial)
         }
+        .sheet(isPresented: $state.showAbout) {
+            AboutView()
+                .presentationBackground(.ultraThinMaterial)
+        }
     }
 
     /// 品牌背景图：首页靠右 140% 透明度 70%，其余页面居中 50%

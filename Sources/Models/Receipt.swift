@@ -83,6 +83,8 @@ struct Receipt: Codable, Sendable {
         self.recognizedAt = try c.decodeIfPresent(String.self, forKey: .recognizedAt) ?? ""
         self.sourceFile = try c.decodeIfPresent(String.self, forKey: .sourceFile) ?? ""
         self.error = try c.decodeIfPresent(String.self, forKey: .error) ?? ""
+        // 模型可能给 92 这种百分数或越界值：钳制到 0–1，避免绕过低置信复核判定
+        self.confidence = min(1.0, max(0.0, self.confidence))
     }
 
     func encode(to encoder: Encoder) throws {
@@ -107,8 +109,12 @@ struct Receipt: Codable, Sendable {
     var requiredCoverage: Double {
         let req = BillTypeFields.spec(for: receiptType).required
         guard !req.isEmpty else { return 1.0 }
-        // 用 field(_:) 展平双层 Optional，避免把「显式 null」误判为已覆盖
-        let hit = req.filter { field($0) != nil }.count
+        // 用 field(_:) 展平双层 Optional，避免把「显式 null」误判为已覆盖；
+        // 空字符串/纯空白同样视为未覆盖（模型常用 "" 冒充已填字段）
+        let hit = req.filter { key in
+            guard let v = field(key) else { return false }
+            return !v.trimmingCharacters(in: .whitespaces).isEmpty
+        }.count
         return Double(hit) / Double(req.count)
     }
 
@@ -117,17 +123,6 @@ struct Receipt: Codable, Sendable {
         !error.isEmpty || confidence < 0.5 || requiredCoverage < 0.5
     }
 
-    // MARK: - 派生：用于行程归类的 key
-
-    /// 用于行程分组的"日期"：优先 departure_date / check_in_date / issue_date
-    var tripDate: String? {
-        field("departure_date")
-            ?? field("check_in_date")
-            ?? field("issue_date")
-    }
-
-    /// 用于行程分组的"城市"：优先 origin_city / city
-    var tripCity: String? {
-        field("origin_city") ?? field("city")
-    }
+    // 注：原 tripDate/tripCity 派生属性已删除——行程归类早已改用 BillInfo.dateRange/cities，
+    // 这两个属性无任何生产调用（四期死代码清理）
 }

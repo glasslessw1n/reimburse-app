@@ -1,259 +1,199 @@
-# 报销整理 · Native
+# 报销整理
 
-> macOS 原生 SwiftUI 应用。把发票 PDF / 图片拖进来，OCR + LLM 自动识别票据类型、抽取关键字段、按行程归档，一键打包 ZIP 提交财务。
+报销整理是一款 macOS 原生应用，用于整理差旅报销票据。将发票、行程单等票据文件拖入窗口，应用在本机完成文字识别（OCR），再调用你自行配置的大模型服务抽取结构化字段，按差旅行程自动归类、配对，最后生成可直接提交的报销材料：整理好的票据文件夹（ZIP）、按打印版式排版的整合 PDF、报销明细 Excel，以及提交前的自检报告。
+
+除大模型调用外，全部处理都在本机完成：OCR 使用系统 Vision 框架离线运行，会话数据保存在本机应用目录，不经过任何第三方服务器。应用本身不内置、不转发任何账号与密钥，大模型服务的选择与费用由使用者自行决定。
 
 | | |
 |---|---|
-| **当前版本** | v2.0.0 |
-| **平台** | macOS 15 Sequoia+（Apple Silicon / Intel） |
-| **技术栈** | Swift 6 + SwiftUI（Observation）+ Apple Vision + PDFKit + URLSession |
-| **依赖** | Xcode 16+（含 xcodebuild） / [XcodeGen](https://github.com/yonaskolb/XcodeGen) |
+| 当前版本 | 2.0.0 |
+| 运行平台 | macOS 15 及以上，Apple Silicon 与 Intel 均为 Universal 构建 |
+| 技术栈 | Swift 6 / SwiftUI / Vision / PDFKit / URLSession，零第三方依赖 |
+| 工程生成 | [XcodeGen](https://github.com/yonaskolb/XcodeGen)（`project.yml` 为工程定义） |
 
----
+## 功能
 
-## ✨ 主要功能
+**票据识别**
 
-- **多 Provider LLM**：DeepSeek / OpenAI / 月之暗面 / 智谱 / Ollama / vLLM / 自定义
-- **零依赖 OCR**：Apple Vision（中文 + 英文，on-device，识别准确率高）
-- **PDF 处理**：PDFKit 优先取文字层，无文字层自动渲染图片 + OCR
-- **14 种票据类型**：火车票、机票行程单、登机牌、酒店水单/发票、滴滴行程/发票、餐饮、通信、加油、通行费等（增值税发票按消费内容自动归类）
-- **智能归类**：按日期 + 城市连通性自动合并差旅行程（跨年日期精确）
-- **酒店水单/发票自动配对**：金额匹配 + 酒店名/城市相似度消歧，避免同金额误配
-- **会话管理**：首页「最近会话」恢复历史会话、一键清空历史
-- **单票操作**：右键单票「重新识别」/「删除」，无需整批清空
-- **ZIP 打包**：copy 到临时 staging 再打包（不动 originals，可重复打包），保存到 `~/Downloads/`
-- **Excel 明细生成**：手写 xlsx（zip + OOXML，无第三方依赖），按行程分组，5 列结构（票据类别 / 日期/区间 / 金额 / 明细 / 备注），含小计和总计
+- 支持 PDF、JPG、PNG、BMP、WEBP；多文件并行处理（上限 4）。
+- PDF 优先读取文字层；文字层不足或不可信（须命中金额、日期、票号、税号、行程等关键字段类别中的至少两类）时，逐页渲染后 OCR，长文档超出识别页数上限（默认 3 页）会在结果文本中明确标注，不静默丢页。
+- 登机牌类 A4 文档仅在有登机牌证据（文字层关键词或快速识别探测命中）时才裁切凭证区域，不误伤同为 A4 的扫描发票与水单。
+- 识别采用两段式：先分类（只发送文本摘要），再按类型抽取字段；结果按文本指纹缓存在进程内，重复拖入或重跑同一文件不重复调用大模型。
+- 大模型调用具备分级重试：鉴权类永久错误不重试，限流与服务错误指数退避；批量处理被取消时立即终止，不再继续发起请求。
 
----
+**归类与配对**
 
-## 📦 项目结构
+- 行程按常驻地（在设置中维护）锚点自动切分：以离开/返回常驻地的交通票为界合并同一趟差旅，日期计算使用完整年月日，跨年行程同样正确；整理后补传的票据只归入所属行程，不改动已有分组。
+- 酒店水单与住宿发票自动配对：先按名称与城市相似度判定（设相似度下限，宁可标记待复核也不错配），一票多住（多张水单对一张发票）按配对关系处理，各处口径一致。
+- 滴滴行程单与发票以序号（字母）关联；一张汇总发票按金额子集和覆盖多张行程单，不重复计入总额。
+- 每张票据保留待复核标记与原因（字段缺失、置信度低、未配对等），在列表、整理页与提交前检查中均可定位。
 
-```
-报销整理Native/
-├── README.md
-├── project.yml                       # XcodeGen 配置
-│
-├── BuildScripts/
-│   └── build_native.sh                # 一键 Release + 签名 + dmg
-│
-├── BuildAssets/                       # 图标源
-│   ├── AppIcon.icns
-│   ├── AppIcon.iconset/               # 多尺寸源
-│   ├── icon.png
-│   ├── icon.svg
-│   ├── icon_128.png
-│   └── icon_64.png
-│
-├── ReimbursementNative.xcodeproj/     # XcodeGen 生成的工程
-│
-└── Sources/
-    ├── App/                          # @main + 全局状态
-    │   ├── ReimbursementNativeApp.swift
-    │   ├── ContentView.swift
-    │   └── AppState.swift
-    │
-    ├── Models/                       # 数据模型（Codable）
-    │   ├── BillType.swift             # 14 种票据类型枚举
-    │   ├── BillTypeFields.swift       # 每种票据的字段清单（required/optional/sortable/fileNamePart）
-    │   ├── Receipt.swift              # LLM 输出的标准结构
-    │   └── AnyJSONValue.swift         # LLM JSON 字段值归一化
-    │
-    ├── Services/                      # 业务逻辑
-    │   ├── OCR/
-    │   │   ├── OCRService.swift       # Vision VNRecognizeTextRequest
-    │   │   ├── PDFRenderer.swift      # PDFKit 文字层 + 渲染
-    │   │   └── TextExtractor.swift    # bytes → text 主入口
-    │   ├── LLM/
-    │   │   ├── LLMClient.swift        # URLSession OpenAI 兼容协议
-    │   │   ├── LLMPrompts.swift       # 自动生成字段说明
-    │   │   └── LLMRecognizer.swift    # OCR + LLM → Receipt
-    │   ├── Storage/
-    │   │   ├── SessionManager.swift   # session 生命周期 + 文件落地
-    │   │   ├── SessionManifest.swift  # Codable 模型
-    │   │   └── TripResolver.swift     # 行程分组算法
-    │   ├── Packaging/
-    │   │   └── ZipPackager.swift      # ditto 打包（自动跳空目录）
-    │   └── Settings/
-    │       ├── LLMSettingsStore.swift # .env 读写
-    │       └── LLMProvider.swift      # Provider 预设（DeepSeek/OpenAI/...）
-    │
-    └── Views/                         # SwiftUI 视图
-        ├── Home/
-        │   └── HomeView.swift          # 首页：左标题 + 右操作指引
-        ├── Workspace/
-        │   ├── WorkspaceView.swift     # 容器 + 步骤指示
-        │   ├── UploadStep.swift        # 上传 + 识别（拖放区 + 实时结果列表）
-        │   ├── FinalizeStep.swift      # 行程卡片列表
-        │   └── PackageStep.swift       # 打包 + 路径显示
-        ├── Settings/
-        │   └── SettingsView.swift      # LLM 设置面板
-        └── Components/
-            ├── DropZone.swift          # 拖拽区
-            ├── ProgressBar.swift       # 进度条
-            ├── BillRow.swift           # 单条票据行（可展开）
-            ├── StatusBadges.swift      # OCR / LLM 状态徽章
-            └── PopUpButton.swift       # macOS 原生 NSPopUpButton 包装
-```
+**导出（打包页，共五项）**
 
----
+- **完整打包（ZIP）**：按行程目录归置全部票据文件并生成标准文件名，附 `报销明细.xlsx`（可勾选），落盘到下载目录。
+- **整合 PDF**：全部票据按打印版式排进 A4（矢量贴页），规则见下文「整合 PDF 排版规则」。
+- **合并 PDF**：按同样的类别顺序将票据原样拼接，不排版、不缩放。
+- **仅 Excel**：单独导出报销明细表。
+- **提交前检查**：逐项列出原文件缺失、待复核票据、住宿缺发票、滴滴未配对、行程日期重叠，并给出与 Excel 同口径的分类合计。
 
-## 🚀 构建
+**数据与凭据**
 
-### 前置
+- API Key 保存在系统钥匙串（Keychain），不写入任何明文文件；旧版本写在 `.env` 中的 Key 会在首次启动时自动迁入钥匙串并清除明文。
+- 其余配置（服务地址、模型、购方信息、常驻地）保存在 `.env`，保存时只更新已知项，使用者自行添加的其他配置项与注释会被保留。
+
+## 构建与安装
+
+### 前置工具
+
+- Xcode 16 及以上
+- XcodeGen：`brew install xcodegen`
+
+### 生成工程并构建
 
 ```bash
-# Xcode 16+（含 xcodebuild）
-xcodebuild -version
-
-# XcodeGen（生成 .xcodeproj）
-brew install xcodegen    # 或: aqua:yonaskolb/XcodeGen
-```
-
-### 一次性生成工程
-
-```bash
-cd /Users/lihaidi/Downloads/Dev/报销整理Native
-xcodegen generate           # 生成 ReimbursementNative.xcodeproj
-```
-
-### 在 Xcode 中开发
-
-```bash
+git clone https://github.com/glasslessw1n/reimburse-app.git
+cd reimburse-app
+xcodegen generate        # 依据 project.yml 生成 ReimbursementNative.xcodeproj
 open ReimbursementNative.xcodeproj
-# ⌘R 跑起来
 ```
 
-### 命令行构建
+在 Xcode 中选择 `ReimbursementNative` scheme 构建运行即可。新增或删除源文件后需重新执行 `xcodegen generate`。
+
+### 打包发布版
 
 ```bash
-# Debug（开发用）
-xcodebuild -project ReimbursementNative.xcodeproj \
-           -scheme ReimbursementNative \
-           -configuration Debug \
-           -destination 'platform=macOS' \
-           build
-
-# Release + dmg（打包用）
 bash BuildScripts/build_native.sh
-# 产物：
-#   BuildAssets/temp_build/Build/Products/Release/报销整理.app
-#   报销整理.dmg
 ```
 
----
+脚本默认以 `arm64 x86_64` 双架构构建 Release，校验产物架构后做 ad-hoc 签名，并生成带「应用程序」软链的 DMG（`报销整理.dmg`，打开后将应用拖入 Applications 即完成安装）。如只需当前架构，可用 `ARCHS=$(uname -m)` 覆盖。
 
-## ⚙️ 配置 LLM
+说明：产物为 ad-hoc 签名、未经公证，首次打开时系统会拦截，需在 Finder 中右键应用选择「打开」并确认一次。
 
-首次启动 → 右上角 ⚙️ 齿轮图标 → 打开设置面板。
+## 配置
 
-| Provider | Base URL | 默认 Model |
+首次启动后打开设置（菜单或工具栏齿轮图标，快捷键 ⌘,），填写大模型服务信息后保存。常用服务预设如下，也可选择「自定义」填写任意 OpenAI 兼容接口：
+
+| 服务 | Base URL | 参考模型 |
 |---|---|---|
-| **DeepSeek**（推荐） | `https://api.deepseek.com/v1` | `deepseek-chat` |
-| **OpenAI** | `https://api.openai.com/v1` | `gpt-4o-mini` |
-| **月之暗面** | `https://api.moonshot.cn/v1` | `moonshot-v1-8k` |
-| **智谱** | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-flash` |
-| **Ollama**（本地） | `http://localhost:11434/v1` | `qwen2.5:14b` |
-| **vLLM**（自部署） | `http://localhost:8000/v1` | `meta-llama/...` |
-| **自定义** | (留空让你填) | (留空) |
+| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` |
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` |
+| 月之暗面 | `https://api.moonshot.cn/v1` | `moonshot-v1-8k` |
+| 智谱 | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-flash` |
+| Ollama（本地） | `http://localhost:11434/v1` | 本地已拉取的模型名 |
+| vLLM（自部署） | `http://localhost:8000/v1` | 部署的模型名 |
 
-点 `测试连接` 验证 → 点 `保存` 写入 `~/Library/Application Support/Reimbursement/.env`。
+- **API Key**：云端服务必填；本地服务（地址为 localhost、127.0.0.1 或 .local 主机）允许留空。设置面板提供「测试连接」与「拉取列表」用于验证配置。
+- **购方名称 / 税号**：填写后，发票类票据的购方字段以此为准。
+- **常驻地**：你出发与返回的城市（可多个，逗号分隔）。这是行程切分的锚点，请务必按实际填写，否则行程会合并错误。
+- 配置存放位置：`~/Library/Application Support/Reimbursement/.env`（Key 除外，见上文）。
 
----
+## 使用说明
 
-## 📋 使用流程
+### 第一步：上传与识别
 
-1. **首页** → 点 `开始整理 →` 新建会话，或从「最近会话」继续上次未完成
-2. **拖文件** 到上传框（支持 PDF / JPG / PNG / WEBP，多文件并行处理）
-3. **识别结果** 在拖放区下方实时显示，点行展开看 OCR 原文 + LLM 抽取字段；识别有误可右键「重新识别」/「删除」
-4. 点 `下一步：整理 →`，系统按日期 + 城市连通性合并差旅行程
-5. 检查每张卡的金额、行程归属；如有异常回 `补传`
-6. 点 `保存到下载目录 →`，ZIP 落到 `~/Downloads/`，可一键 Finder 中打开
+在首页点「开始整理」新建会话（也可从「最近会话」恢复未完成的会话），进入工作区后把票据文件拖入顶部的拖放区。识别在后台并行进行，进度面板显示总数、已完成数与最近完成的文件；结果实时出现在下方列表中。
 
-ZIP 结构：
+- 点击任意一行可展开查看识别原文摘录与抽取字段。
+- 标记为「需确认」的票据请重点核对：常见原因包括关键字段缺失、置信度低、酒店或滴滴票据未配对。
+- 单张有误时，右键该行可「重新识别」或「删除」，不必整批重来；缺件时随时把文件再拖进来补传即可。
+- 列表可按默认顺序、类型、日期排序，或只看需确认项。
+
+### 第二步：整理
+
+点「下一步：整理」，应用按常驻地锚点与日期邻近关系把票据分组为若干行程与「本地」一组，并完成酒店、滴滴的配对与序号分配。此页按行程卡片展示分组结果与金额，请逐卡核对：
+
+- 行程的起止日期与城市是否符合实际出差；
+- 酒店水单是否都有对应发票（缺发票会在卡片与提交前检查中提示）；
+- 滴滴发票与行程单的字母序号是否成对。
+
+分组有误通常源于常驻地设置不正确或某张交通票识别错误，修正后回到第一步重新识别对应票据再进入整理即可。
+
+### 第三步：打包与导出
+
+确认无误后进入打包页。主操作「保存到下载目录」生成完整 ZIP；其余四项导出（整合 PDF、合并 PDF、仅 Excel、提交前检查）可按需要单独使用，不必走完整打包。首次提交前建议先运行一次「提交前检查」，把缺件与未配对项清零后再打包。
+
+ZIP 内部结构示例：
 
 ```
-报销单据_<sid>_<时间>.zip
-├── <MMDD-MMDD 城市>/
-│   ├── <MMDD-MMDD 城市住宿水单.pdf>
-│   ├── <MMDD-MMDD 城市住宿发票.pdf>
-│   ├── <MMDD 航班号 起点-终点 金额.pdf>
-│   └── ...
+报销单据<时间戳>.zip
+├── 0910-0912 厦门/
+│   ├── 0910-0912 厦门住宿水单.pdf
+│   ├── 0910-0912 厦门住宿发票.pdf
+│   ├── 0910 CA1832 重庆-厦门 553.00.pdf
+│   └── …
+├── 本地/
+│   └── …
+├── 报销明细.xlsx
 └── manifest.json
 ```
 
----
-
-## 🔄 与原 Python 项目的对应
-
-| Python（`/Users/lihaidi/Downloads/Dev/报销整合工具LLM/`） | Swift（`Sources/`） |
-|---|---|
-| `core/receipt_schema.py:BillType` | `Models/BillType.swift` |
-| `core/receipt_schema.py:RECEIPT_TYPE_FIELDS` | `Models/BillTypeFields.swift` |
-| `core/ocr.py:extract_text_from_bytes` | `Services/OCR/TextExtractor.swift` |
-| `core/llm_client.py:call_llm_json` | `Services/LLM/LLMClient.swift` |
-| `core/llm_prompts.py:_build_field_spec` | `Services/LLM/LLMPrompts.swift`（自动生成） |
-| `core/llm_recognizer.py:recognize` | `Services/LLM/LLMRecognizer.swift` |
-| `core/trip_resolver.py:assign_trip` | `Services/Storage/TripResolver.swift` |
-| `core/collector.py:finalize_session` | `Services/Storage/SessionManager.swift:finalize()` |
-| `core/collector.py:_build_filename` | `Services/Storage/SessionManager.swift:buildFilename(for:)` |
-| `core/settings.py`（.env 解析） | `Services/Settings/LLMSettingsStore.swift` |
-| `core/packager.py:package_to_file` | `Services/Packaging/ZipPackager.swift` |
-| `app.py`（FastAPI） | **删除**（函数式调用替代 HTTP） |
-| `web/index.html` | `Views/`（SwiftUI 重新实现，保留视觉风格） |
-
----
-
-## ✅ 已完成
-
-**基础功能（M1–M9）**
-
-- [x] **M1** 项目骨架（XcodeGen + SwiftUI App）
-- [x] **M2** 数据模型（BillType + BillTypeFields + Receipt + AnyJSONValue）
-- [x] **M3** OCR 服务（Vision + PDFKit）
-- [x] **M4** LLM 客户端（OpenAI 兼容协议 + 自动 prompt 生成 + 重试）
-- [x] **M5** 存储 + 行程归类 + 酒店水单/发票匹配
-- [x] **M6** UI 骨架 + 设置面板（Provider 预设 + 模型下拉）
-- [x] **M7** 上传 + 实时识别列表（自适应滚动条 + 进度面板）
-- [x] **M8** 行程卡片 + 打包（ditto 自动跳空目录）
-- [x] **M9** Release 打包 + ad-hoc 签名 + dmg
-
-**v2.0.0 完善**
-
-- [x] 正确性：跨年日期精确、酒店匹配相似度消歧、`BillInfo.id` 唯一化、copy 打包、Excel 滴滴总额不漏钱、prompt 计数动态化
-- [x] 会话管理：首页「最近会话」恢复 + 清空历史
-- [x] 单票操作：右键「重新识别」/「删除」
-- [x] UI 现代化：状态图标 + 齿轮设置、hover 浮动动效、segmented 步骤切换、操作指引更新
-- [x] 测试：39 个 Swift Testing 用例（5 个 suite）
-
----
-
-## 🚧 已知限制 / 后续计划
-
-- **报销系统填报**（Playwright 那部分）—— Swift 没有原生等价物，可选 WKWebView + JS 注入 或外接脚本桥
-- **行程目录名跨年显示**：目录名用 MMDD 不显示年份，跨年行程（12 月→1 月）目录名显示为 `1230-0102`（排序/合并正确，但年份不可见）
-- **Liquid Glass**：当前用 NSVisualEffectView 毛玻璃，未迁移到 macOS 26 原生 `.glassEffect`（需实机截图验证视觉）
-- **语义字号**：视图仍用硬编码字号，未全面迁移到 `.title`/`.body` 等语义样式（Dynamic Type 适配待做）
-- **macOS Gatekeeper**：dmg 是 ad-hoc 签名，首次启动需右键 → 打开 → 信任
-- **OCR Sendable warning**：Vision framework 非 Sendable warning，不影响功能
-
----
-
-## 📂 数据落地
+### 数据位置与会话
 
 ```
 ~/Library/Application Support/Reimbursement/
-├── .env                          # LLM 配置
+├── .env                  # 配置（不含 API Key）
 └── sessions/
-    └── {sid}/
-        ├── manifest.json
-        ├── originals/             # 原文件
-        └── trips/                # finalize 后分组
+    └── <会话 id>/
+        ├── manifest.json # 会话清单（票据、分组与配对的完整记录）
+        ├── originals/    # 上传的原文件
+        └── trips/        # 整理后归置的文件
 ```
 
-下载目录：`~/Downloads/报销单据_<sid>_<时间>.zip`
+清单文件如损坏，应用不会静默丢弃数据：原文件会被备份为同目录下 `manifest.corrupt-<时间>.json` 后再重建，并弹窗提示。导出产物默认保存在 `~/Downloads/`。
 
----
+## 整合 PDF 排版规则
 
-## 📝 License
+整合 PDF 面向纸质打印提交，版式如下（同一行程内依次排列，本地组顺序类似）：
 
-MIT
+1. 自驾行程单整页；加油与通行费发票按发票类规则排版（见第 5 条）。
+2. 行程证明页：取整段行程的第一张与最后一张交通票，上下排列（1×2）。
+3. 交通票以 3 行 × 2 列排列。**登机牌不出现在此处**：登机牌是行程证明而非报销凭证，只在证明页出现；一段行程有两张以上登机牌时，只取起止两张上证明页，其余不进入整合 PDF（原文件仍在 ZIP 中）。火车票、机票行程单照常排列，出租车等打车凭证在发票类区排列（见第 5 条）。
+4. 酒店票据按组排列：每张水单整页，其配对发票紧随其后、同页排两份（打印后一份提交一份留存）；未配对的发票排在本组末尾。
+5. 发票类（滴滴发票、餐饮、加油、通行费及其他类别）统一左转 90° 后按张数分档：1 张整页、2 张上下排列（1×2）、3 张及以上 2×2。滴滴发票会先按文字内容框裁去大面积空白再排版。
+6. 滴滴行程单：1 张整页，多张左转 90° 上下排列。
+7. 多页文档的每一页都进入排版，不截断；任何类别的票据都有兜底位置，不会漏排。
+
+报销明细（Excel）与整合 PDF 使用同一套金额口径：酒店发票与水单配对时只计水单金额，滴滴汇总发票覆盖的行程单不再重复计入，自驾行程单本身金额不入账（以加油、通行费票面为准）。
+
+## 票据类型
+
+应用识别以下类型；增值税普通/专用发票不是独立类型，一律按消费内容归入对应类别（住宿归酒店发票、餐饮归餐饮、打车归滴滴发票等）：
+
+火车票、机票行程单、登机牌、高速路行程单（自驾）、出租车/公交/地铁、滴滴行程单、滴滴发票、酒店水单、酒店发票、加油发票、通行费发票、餐饮、通信、其他。
+
+## 项目结构
+
+```
+├── project.yml                  # XcodeGen 工程定义
+├── BuildScripts/build_native.sh # Release 构建 + 签名 + DMG
+├── BuildAssets/                 # 应用图标与品牌图
+├── Sources/
+│   ├── App/                     # 入口、全局状态、主窗口
+│   ├── Models/                  # 票据类型、字段规格、识别结果、会话清单模型
+│   ├── Services/
+│   │   ├── OCR/                 # Vision 识别、PDF 文字层与渲染、文本提取
+│   │   ├── LLM/                 # 大模型客户端、提示词、两段式识别与结果缓存
+│   │   ├── Storage/             # 会话存储、行程归类、酒店/滴滴配对
+│   │   ├── Packaging/           # ZIP 打包、整合/合并 PDF、Excel 生成、提交前检查
+│   │   └── Settings/            # 配置存取（.env）与 API Key 钥匙串存储
+│   └── Views/                   # 首页、工作区（上传/整理/打包）、设置、关于
+└── Tests/                       # Swift Testing 单元测试
+```
+
+## 开发
+
+- 构建与测试在 Xcode 中进行（⌘B 构建、⌘U 运行全部测试）；测试覆盖行程归类、配对、金额口径、清单完整性、排版页数与配置合并等关键逻辑。
+- 工程文件由 XcodeGen 生成并纳入版本管理；修改 `project.yml` 或增删源文件后重新执行 `xcodegen generate`。
+- 代码为 Swift 6 语言模式，依赖仅限系统框架。
+
+## 已知限制
+
+- 行程目录名使用月日（MMDD）不含年份，跨年行程目录名形如 `1230-0102`，分组与排序正确，但年份需结合清单查看。
+- 发布包为 ad-hoc 签名、未经 Apple 公证，首次打开需右键确认（见「构建与安装」）。
+- 界面毛玻璃使用系统材质实现，未迁移至 macOS 26 的 Liquid Glass 样式。
+
+## 使用声明
+
+本软件仅供开发者所在单位内部相关人员在差旅报销整理场景下使用，不得向任何外部单位或个人传播、分发、出售或提供使用。使用者须妥善保管经手的票据与数据；因违规传播、超范围使用或不当操作引发的任何后果与责任，由使用人自行承担，与开发者无关。本软件按「现状」提供，识别与归类结果仅供参考，不构成对准确性的承诺，正式提交前请自行核对原始票据。
+
+源码仓库：<https://github.com/glasslessw1n/reimburse-app>

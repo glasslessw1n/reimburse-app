@@ -36,7 +36,8 @@ final class UploadViewModel {
     ///   boarding_pass 在识别为 boarding_pass 后裁切 PDF 并替换 originals/ 里的版本（用于打包）
     func processFile(_ url: URL, session: SessionManager, recognizer: LLMRecognizer) async -> BillInfo {
         let filename = url.lastPathComponent
-        current = filename
+        // 注意：这里不写 stage/current——4 个文件并发处理时共享单值会互相串扰，
+        // 进度文案由 processAll 做聚合展示（总数/已完成/最近完成）
 
         // 1. 读 bytes
         let data: Data
@@ -64,7 +65,6 @@ final class UploadViewModel {
         let suffix = url.pathExtension
         let ocrText: String
         do {
-            stage = "OCR 识别 \(filename)"
             ocrText = try await TextExtractor.extract(data: data, suffix: suffix)
         } catch {
             return BillInfo(
@@ -74,7 +74,6 @@ final class UploadViewModel {
         }
 
         // 4. LLM
-        stage = "LLM 抽取字段 \(filename)"
         let receipt = await recognizer.recognize(
             ocrText: ocrText, filename: filename, sourceFile: filename
         )
@@ -84,7 +83,6 @@ final class UploadViewModel {
            suffix.lowercased() == "pdf",
            let cropped = PDFRenderer.cropBoardingPass(pdfData: data) {
             do {
-                stage = "裁切登机牌 \(filename)"
                 _ = try session.saveOriginal(data: cropped, filename: sourceFilename, overwrite: true)
             } catch {
                 // 裁切替换失败不影响识别结果
@@ -118,13 +116,27 @@ final class UploadViewModel {
     }
 
     /// 重新识别单张：读原文件重跑 OCR+LLM，替换同 uid 的旧票据（保留 uid 保持列表身份稳定）
+    /// 失败必须显形（旧实现静默 return / 空文本照常送检，用户毫无感知）
     func reRecognize(_ bill: BillInfo, session: SessionManager, recognizer: LLMRecognizer) async {
         let src = session.rootDir.appendingPathComponent("originals").appendingPathComponent(bill.sourceFile)
-        guard let data = try? Data(contentsOf: src) else { return }
+        guard let data = try? Data(contentsOf: src) else {
+            lastError = "原文件读取失败：\(bill.sourceFile)"
+            return
+        }
 
         let suffix = (bill.sourceFile as NSString).pathExtension
         stage = "重新识别 \(bill.sourceFile)"
-        let ocrText = (try? await TextExtractor.extract(data: data, suffix: suffix)) ?? ""
+        let ocrText: String
+        do {
+            ocrText = try await TextExtractor.extract(data: data, suffix: suffix)
+        } catch {
+            lastError = "文本提取失败：\(bill.sourceFile)（\(error.localizedDescription)）"
+            return
+        }
+        guard !ocrText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            lastError = "未提取到文本，已保留原识别结果：\(bill.sourceFile)"
+            return
+        }
         let receipt = await recognizer.recognize(
             ocrText: ocrText, filename: bill.sourceFile, sourceFile: bill.sourceFile
         )
@@ -260,6 +272,14 @@ struct UploadStep: View {
         } message: {
             Text("将删除当前会话的所有识别结果与原文件，该操作不可撤销。")
         }
+        .alert("操作失败", isPresented: Binding(
+            get: { vm.lastError != nil },
+            set: { if !$0 { vm.lastError = nil } }
+        )) {
+            Button("好") { vm.lastError = nil }
+        } message: {
+            Text(vm.lastError ?? "")
+        }
     }
 
     /// 清空：删除 bills / trips / local / originals 目录
@@ -332,8 +352,16 @@ struct UploadStep: View {
         vm.total = urls.count
         vm.done = 0
         vm.lastError = nil
-        vm.stage = "准备上传…"
+        vm.stage = "正在识别 \(urls.count) 张票据…"
+        vm.current = ""
         defer { vm.processing = false }
+
+        // 聚合进度：完成一张更新一次计数与「最近完成」（单值文案只在这里写，不串扰）
+        func noteCompleted(_ bill: BillInfo) {
+            session.ingest(bill)
+            vm.done += 1
+            vm.current = "最近完成：\(bill.sourceFile)"
+        }
 
         await withTaskGroup(of: BillInfo.self) { group in
             var pending = 0
@@ -342,10 +370,7 @@ struct UploadStep: View {
             for url in urls {
                 if pending >= max {
                     if let bill = await group.next() {
-                        await MainActor.run {
-                            session.ingest(bill)
-                            vm.done += 1
-                        }
+                        await MainActor.run { noteCompleted(bill) }
                         pending -= 1
                     }
                 }
@@ -356,10 +381,7 @@ struct UploadStep: View {
             }
 
             for await bill in group {
-                await MainActor.run {
-                    session.ingest(bill)
-                    vm.done += 1
-                }
+                await MainActor.run { noteCompleted(bill) }
             }
         }
         vm.stage = "识别完成"
