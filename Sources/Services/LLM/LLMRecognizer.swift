@@ -247,7 +247,8 @@ final class LLMRecognitionCache: @unchecked Sendable {
         if store[key] == nil {
             order.append(key)
             if order.count > capacity {
-                let evicted = order.removeFirst(order.count - capacity)
+                let evicted = Array(order.prefix(order.count - capacity))
+                order.removeFirst(order.count - capacity)
                 for k in evicted { store.removeValue(forKey: k) }
             }
         }
