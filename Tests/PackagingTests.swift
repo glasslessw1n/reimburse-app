@@ -126,7 +126,7 @@ struct PackagingTests {
     }
 
     @Test func composerDidiTwoInvoicesOneByTwo() throws {
-        // 滴滴发票 2 张 → 1×2 旋转一页
+        // 滴滴发票 2 张 → 1×2 不旋转一页（2026-11-09 分档修订：2 张不旋转）
         var i1 = BillInfo(billType: .didiInvoice, amount: 100, sourceFile: "di1.pdf", fields: ["issue_date": "2026-09-12"])
         i1.didiLetter = "A"
         var i2 = BillInfo(billType: .didiInvoice, amount: 120, sourceFile: "di2.pdf", fields: ["issue_date": "2026-09-12"])
