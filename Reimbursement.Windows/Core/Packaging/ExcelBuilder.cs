@@ -307,6 +307,49 @@ $"<row r=\"{idx}\">"
 : MakeInlineStringCell($"C{idx}", "-", 3))
 + "</row>";
 
+/// <summary>
+/// 滴滴覆盖判定（与 mac 版一致）：一张发票可覆盖若干张行程单（金额之和相等），
+/// 返回被覆盖的行程单下标集合。旧实现只认「单张金额恰好相等」，汇总发票（一张
+/// 盖多段）覆盖不了任何单张，发票与行程单金额会被重复计入。按分（整数）做子集
+/// 和匹配避免浮点误差；候选按金额降序带剪枝回溯，节点上限兜底。
+/// </summary>
+private static HashSet<int> DidiCoveredTrips(
+IReadOnlyList<double> invoiceAmounts, IReadOnlyList<double> tripAmounts)
+{
+static int Cents(double v) => (int)Math.Round(v * 100);
+var remaining = new List<int>();
+for (var i = 0; i < tripAmounts.Count; i++)
+if (tripAmounts[i] > 0) remaining.Add(i);
+var covered = new HashSet<int>();
+foreach (var inv in invoiceAmounts)
+{
+if (inv <= 0) continue;
+var target = Cents(inv);
+if (target <= 0) continue;
+var candidates = remaining.OrderByDescending(i => tripAmounts[i]).ToList();
+var chosen = new List<int>();
+var nodes = 0;
+bool Search(int pos, int sum)
+{
+if (sum == target) return true;
+if (sum > target || pos >= candidates.Count) return false;
+nodes++;
+if (nodes > 20000) return false;
+var ci = candidates[pos];
+chosen.Add(ci);
+if (Search(pos + 1, sum + Cents(tripAmounts[ci]))) return true;
+chosen.RemoveAt(chosen.Count - 1);
+return Search(pos + 1, sum);
+}
+if (Search(0, 0))
+{
+foreach (var ci in chosen) covered.Add(ci);
+remaining.RemoveAll(i => chosen.Contains(i));
+}
+}
+return covered;
+}
+
 private static void AddTotal(Dictionary<string, double> totals, string key, double delta)
 {
 totals.TryGetValue(key, out var cur);
@@ -410,43 +453,55 @@ rows.Add(SubtotalRow(rowIdx, "交通小计", transportSub));
 rowIdx += 1;
 AddTotal(totals, "交通", transportSub);
 
-// 2. 酒店（水单+发票按金额配对，同一住宿只计一次，避免重复入表。
-//    小计行固定骨架：无住宿也出「-」）
+// 2. 酒店（同一住宿只计一次。配对以整理时写入的 PairedFolioUID 为准——
+//    旧实现在这里按「首个金额相等」另配一遍，一票多住时会把发票再计一次；
+//    老清单没有任何配对信息时才回退金额配对。小计行固定骨架：无住宿也出「-」）
 var hotelSub = 0.0;
-if (hotelFolios.Count > 0 || hotelInvoices.Count > 0)
+var folioUIDs = new HashSet<string>(hotelFolios.Select(f => f.Uid));
+var hasPairingInfo = hotelInvoices.Any(inv => inv.PairedFolioUID.Length > 0);
+var folioHasInvoice = new Dictionary<string, bool>();
+var standaloneInvoices = new List<BillInfo>();
+if (hasPairingInfo)
 {
-var usedInvoices = new HashSet<int>();
-
+foreach (var folio in hotelFolios)
+folioHasInvoice[folio.Uid] = hotelInvoices.Any(inv => inv.PairedFolioUID == folio.Uid);
+standaloneInvoices = hotelInvoices.Where(inv =>
+!(inv.PairedFolioUID.Length > 0 && folioUIDs.Contains(inv.PairedFolioUID))).ToList();
+}
+else
+{
+var used = new HashSet<int>();
 foreach (var folio in hotelFolios)
 {
-int? matchedIdx = null;
+var found = false;
 for (var i = 0; i < hotelInvoices.Count; i++)
 {
-if (!usedInvoices.Contains(i) && Math.Abs(hotelInvoices[i].Amount - folio.Amount) < 0.01)
+if (!used.Contains(i) && Math.Abs(hotelInvoices[i].Amount - folio.Amount) < 0.01)
 {
-matchedIdx = i;
+used.Add(i);
+found = true;
 break;
 }
 }
-var hasInvoice = matchedIdx!= null;
-if (matchedIdx is {} mi) usedInvoices.Add(mi);
+folioHasInvoice[folio.Uid] = found;
+}
+standaloneInvoices = hotelInvoices.Where((_, i) => !used.Contains(i)).ToList();
+}
+foreach (var folio in hotelFolios)
+{
 var range = HotelDateRange(folio);
 var city = folio.F("city")?? folio.F("hotel_name")?? "";
 if (folio.Amount > 0) { hotelSub += folio.Amount; tripTotal += folio.Amount;}
-rows.Add(HotelRow(range, city, folio.Amount, hasInvoice, rowIdx));
+rows.Add(HotelRow(range, city, folio.Amount, folioHasInvoice.TryGetValue(folio.Uid, out var hp) && hp, rowIdx));
 rowIdx += 1;
 }
-for (var i = 0; i < hotelInvoices.Count; i++)
+foreach (var inv in standaloneInvoices)
 {
-if (usedInvoices.Contains(i)) continue;
-var inv = hotelInvoices[i];
 var range = HotelDateRange(inv);
 var city = inv.F("city")?? inv.F("hotel_name")?? "";
 if (inv.Amount > 0) { hotelSub += inv.Amount; tripTotal += inv.Amount;}
 rows.Add(HotelRow(range, city, inv.Amount, hasInvoice: true, rowIdx));
 rowIdx += 1;
-}
-
 }
 rows.Add(SubtotalRow(rowIdx, "酒店小计", hotelSub));
 rowIdx += 1;
@@ -456,20 +511,13 @@ AddTotal(totals, "酒店", hotelSub);
 //    发票金额计入；无发票覆盖的行程单金额也计入，避免静默漏钱
 {
 var didiTotal = 0.0;
-var coveredTrips = new HashSet<int>();
+// 覆盖按子集和判定（一张汇总发票可覆盖多张行程单），见 DidiCoveredTrips
+var coveredTrips = DidiCoveredTrips(
+didiInvoice.Select(i => i.Amount).ToList(),
+didiTrip.Select(t => t.Amount).ToList());
 foreach (var inv in didiInvoice)
 {
 if (inv.Amount > 0) { didiTotal += inv.Amount; tripTotal += inv.Amount;}
-for (var ti = 0; ti < didiTrip.Count; ti++)
-{
-if (!coveredTrips.Contains(ti)
-&& didiTrip[ti].Amount > 0
-&& Math.Abs(didiTrip[ti].Amount - inv.Amount) < 0.01)
-{
-coveredTrips.Add(ti);
-break;
-}
-}
 }
 for (var ti = 0; ti < didiTrip.Count; ti++)
 {
@@ -597,20 +645,12 @@ localTotal += sub;
 if (didiTrip.Count > 0 || didiInvoice.Count > 0)
 {
 var didiTotal = 0.0;
-var coveredTrips = new HashSet<int>();
+var coveredTrips = DidiCoveredTrips(
+didiInvoice.Select(i => i.Amount).ToList(),
+didiTrip.Select(t => t.Amount).ToList());
 foreach (var inv in didiInvoice)
 {
 if (inv.Amount > 0) { didiTotal += inv.Amount;}
-for (var ti = 0; ti < didiTrip.Count; ti++)
-{
-if (!coveredTrips.Contains(ti)
-&& didiTrip[ti].Amount > 0
-&& Math.Abs(didiTrip[ti].Amount - inv.Amount) < 0.01)
-{
-coveredTrips.Add(ti);
-break;
-}
-}
 }
 for (var ti = 0; ti < didiTrip.Count; ti++)
 {

@@ -221,9 +221,11 @@ public class ToolkitMergeTests
     }
 
     [Fact]
-    public void ComposeSingleBoardingPassNotDropped()
+    public void ComposeSingleBoardingPassExcludedFromIntegratedPdf()
     {
-        // toolkit 缺陷复现防线：只有一张登机牌（凑不成 P1 去/回对）时不应消失
+        // 2026-11-09 与 mac 版对齐：登机牌只上行程证明页 P1（需起止成对），一律不进
+        // 3×2 网格；只有一张登机牌时它不出现在整合 PDF 中（原文件仍在 ZIP 与明细里）。
+        // 此前 Windows 版的口径是进网格兜底，本次按用户决定改齐。
         using var f = new Fixture().Build(x =>
         {
             x.Add(BillType.BoardingPass, 800, "only-bp.pdf", 1, new()
@@ -237,8 +239,8 @@ public class ToolkitMergeTests
             });
         });
         var result = PdfComposer.Compose(f.Session, Path.Combine(f.Root, "out.pdf"));
-        Assert.Contains(result.Placements,
-            p => p.SourceFile == "only-bp.pdf" && p.Rule == "transport-3x2");
+        Assert.DoesNotContain(result.Placements, p => p.SourceFile == "only-bp.pdf");
+        Assert.Contains(result.Placements, p => p.SourceFile == "folio.pdf");
     }
 
     [Fact]

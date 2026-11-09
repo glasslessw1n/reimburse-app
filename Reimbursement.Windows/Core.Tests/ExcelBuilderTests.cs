@@ -144,6 +144,51 @@ public class ExcelBuilderTests
         Assert.Contains("<mergeCells count=\"3\">", xml);
     }
 
+    /// <summary>汇总发票（一张盖多段）按子集和覆盖：85.5 + 92 = 177.5，行程单金额不重复计入。</summary>
+    [Fact]
+    public void DidiSummaryInvoiceCoversMultipleTrips()
+    {
+        var bills = new List<BillInfo>
+        {
+            new(BillType.TrainTicket, amount: 100, sourceFile: "火车票.pdf",
+                fields: Fields(("departure_date", "2026-09-10"), ("origin_city", "重庆"), ("destination_city", "厦门"))),
+            new(BillType.DidiTrip, amount: 85.5, sourceFile: "行程单1.pdf",
+                fields: Fields(("departure_date", "2026-09-11"))),
+            new(BillType.DidiTrip, amount: 92, sourceFile: "行程单2.pdf",
+                fields: Fields(("departure_date", "2026-09-11"))),
+            new(BillType.DidiInvoice, amount: 177.5, sourceFile: "滴滴发票.pdf",
+                fields: Fields(("issue_date", "2026-09-12"))),
+        };
+        var xml = ExcelBuilder.BuildSheet(bills, HomeCities);
+        // 滴滴只计发票 177.5；总计 = 100 + 177.5 = 277.50（旧等额匹配会算成 455.00）
+        Assert.Contains("报销总计: ¥277.50", xml);
+        Assert.DoesNotContain("455.00", xml);
+    }
+
+    /// <summary>酒店配对以 PairedFolioUID 为准：两住同额、发票 ID 指向第二住时不得按金额误配第一住。</summary>
+    [Fact]
+    public void HotelPairingPrefersPairedFolioUid()
+    {
+        var folio1 = new BillInfo(BillType.HotelFolio, amount: 800, sourceFile: "水单1.pdf",
+            fields: Fields(("check_in_date", "2026-09-10"), ("check_out_date", "2026-09-11"), ("city", "上海")));
+        var folio2 = new BillInfo(BillType.HotelFolio, amount: 800, sourceFile: "水单2.pdf",
+            fields: Fields(("check_in_date", "2026-09-11"), ("check_out_date", "2026-09-12"), ("city", "广州")));
+        var invoice = new BillInfo(BillType.HotelInvoice, amount: 800, sourceFile: "发票.pdf",
+            fields: Fields(("issue_date", "2026-09-12")));
+        invoice.PairedFolioUID = folio2.Uid;
+        var bills = new List<BillInfo>
+        {
+            new(BillType.TrainTicket, amount: 100, sourceFile: "火车票.pdf",
+                fields: Fields(("departure_date", "2026-09-10"), ("origin_city", "重庆"), ("destination_city", "上海"))),
+            folio1, folio2, invoice,
+        };
+        var xml = ExcelBuilder.BuildSheet(bills, HomeCities);
+        // 两住各计一次 800（发票不重复计）→ 酒店 1,600；总计 1,700
+        Assert.Contains("报销总计: ¥1,700.00", xml);
+        // 第一住无发票应标缺发票，第二住有发票（✓ 在行内 E 列）
+        Assert.Contains("✗ 缺发票", xml);
+    }
+
     [Fact]
     public void LocalTelecomMonthLabel()
     {

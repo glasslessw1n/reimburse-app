@@ -230,28 +230,68 @@ public sealed class SessionManager
         foreach (var iIdx in invoiceIdxs)
         {
             var inv = bills[iIdx];
+            inv.PairedFolioUID = ""; // 重跑整理时先清旧配对，避免水单增删后残留错误绑定
             if (inv.Amount <= 0) continue;
 
+            // 金额相等是必要条件；多个候选用相似度消歧，避免金额相同的两家酒店误配
             var candidates = folioIdxs.Where(fIdx =>
                 !usedFolios.Contains(fIdx) && bills[fIdx].Amount > 0 &&
                 Math.Abs(inv.Amount - bills[fIdx].Amount) < 0.01).ToList();
 
+            // 配对门槛（与 mac 版一致）：仅金额相等不够——还要名称/城市有最低相似度，
+            // 否则同额不同酒店会被误绑，并连带污染日期/城市/文件名。
+            // 例外：任一侧名称全缺失且只有一个候选时按金额配对，但标记待复核。
             int? bestIdx = null;
-            if (candidates.Count == 1) bestIdx = candidates[0];
+            var weakMatch = false;
+            var ambiguous = false;
+            if (candidates.Count == 1)
+            {
+                var fIdx = candidates[0];
+                var sim = HotelSimilarity(inv, bills[fIdx]);
+                var namesMissing = HotelNamesMissing(inv) || HotelNamesMissing(bills[fIdx]);
+                if (sim >= 0.35) bestIdx = fIdx;
+                else if (namesMissing) { bestIdx = fIdx; weakMatch = true; }
+                else ambiguous = true;
+            }
             else if (candidates.Count > 1)
             {
                 // 相似度最高者胜（并列时取先出现者，与 Swift max(by:) 的首胜语义一致）
-                bestIdx = candidates
+                var best = candidates
                     .OrderByDescending(c => HotelSimilarity(inv, bills[c]))
                     .First();
+                if (HotelSimilarity(inv, bills[best]) >= 0.35) bestIdx = best;
+                else ambiguous = true;
             }
 
-            if (bestIdx is { } fIdx)
+            if (bestIdx is { } bf)
             {
-                Enrich(inv, bills[fIdx]);
-                usedFolios.Add(fIdx);
+                // 配对结论落账：发票记下水单的 Uid，下游按 ID 认配对、不再按金额重配
+                inv.PairedFolioUID = bills[bf].Uid;
+                if (weakMatch)
+                {
+                    inv.NeedsReview = true;
+                    AppendReviewReason(inv, "与同额水单自动配对（酒店名称缺失，请核对）");
+                }
+                Enrich(inv, bills[bf]);
+                usedFolios.Add(bf);
+            }
+            else if (ambiguous)
+            {
+                inv.NeedsReview = true;
+                AppendReviewReason(inv, "有多张同额水单且名称不够相似，未自动配对（请人工确认）");
             }
         }
+    }
+
+    private static void AppendReviewReason(BillInfo b, string reason) =>
+        b.ReviewReason = b.ReviewReason.Length == 0 ? reason : $"{b.ReviewReason}；{reason}";
+
+    /// <summary>酒店名称类字段（hotel_name / seller_name）是否全缺失。</summary>
+    private static bool HotelNamesMissing(BillInfo b)
+    {
+        string? F(string k) => b.Fields.TryGetValue(k, out var v) ? v : null;
+        var names = new[] { F("hotel_name"), F("seller_name") }.Where(x => x != null).Cast<string>();
+        return names.All(n => n.Trim().Length == 0);
     }
 
     /// <summary>酒店名/销售方名的字符相似度（城市一致额外 +0.5，不封顶）。</summary>
