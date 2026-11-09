@@ -8,7 +8,10 @@
 //  1. 在临时目录里写所有 XML
 //  2. 用 /usr/bin/zip 打包成 .xlsx
 //
-//  对应 Python core/legacy_excel/gen_excel.py 的输出格式（5 列 + 行程/本地分组）。
+//  版式以用户 2026-11-09 提供的目标样例（0910-1026.xlsx）为准：5 列、行程/本地
+//  分段、每段固定骨架（铁路交通标签 + 交通小计、酒店小计、滴滴汇总行）、日期用
+//  MM/DD、备注列写整理后的目标文件名、总计行带分类整数明细。金额口径（酒店
+//  一票一计、滴滴子集和覆盖、自驾行程单不计）与整合 PDF 保持一致。
 //
 
 import Foundation
@@ -166,7 +169,7 @@ enum ExcelBuilder {
         </border>
       </borders>
       <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-      <cellXfs count="8">
+      <cellXfs count="12">
         <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
         <xf numFmtId="0" fontId="1" fillId="5" borderId="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
         <xf numFmtId="0" fontId="2" fillId="2" borderId="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
@@ -175,6 +178,10 @@ enum ExcelBuilder {
         <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
         <xf numFmtId="0" fontId="4" fillId="0" borderId="1" applyAlignment="1"><alignment vertical="center"/></xf>
         <xf numFmtId="0" fontId="2" fillId="4" borderId="1" applyAlignment="1"><alignment vertical="center"/></xf>
+        <xf numFmtId="0" fontId="3" fillId="5" borderId="1" applyAlignment="1"><alignment vertical="center"/></xf>
+        <xf numFmtId="0" fontId="4" fillId="4" borderId="1" applyAlignment="1"><alignment vertical="center"/></xf>
+        <xf numFmtId="4" fontId="4" fillId="3" borderId="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="4" fillId="3" borderId="1" applyAlignment="1"><alignment vertical="center"/></xf>
       </cellXfs>
       <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
       <numFmts count="1">
@@ -192,12 +199,15 @@ enum ExcelBuilder {
     }
 
     /// `xl/worksheets/sheet1.xml`（用现成的行程分组渲染，与 ZIP 同源）
+    /// 版式以用户提供的目标样例（0910-1026.xlsx）为准：列宽 14/18/12/30/24、
+    /// 首行冻结、自动筛选、段标题/合计行 A:E 合并、总计行前留一空行。
     static func buildSheet(trips: [TripGroup], localBills: [BillInfo]) -> String {
         var totalsByCategory: [String: Double] = [
             "自驾车": 0, "交通": 0, "酒店": 0, "滴滴": 0, "餐饮": 0, "通信": 0, "其他": 0
         ]
 
         var rowsXML: [String] = []
+        var merges: [String] = []
         // 表头
         rowsXML.append(Self.makeRow(idx: 1, cells: [
             ("A", "票据类别", 1),
@@ -210,19 +220,40 @@ enum ExcelBuilder {
 
         for trip in trips {
             rowIdx = renderTrip(trip, startRow: rowIdx,
-                                rows: &rowsXML, totals: &totalsByCategory)
+                                rows: &rowsXML, merges: &merges, totals: &totalsByCategory)
         }
         if !localBills.isEmpty {
             rowIdx = renderLocal(localBills, startRow: rowIdx,
-                                 rows: &rowsXML, totals: &totalsByCategory)
+                                 rows: &rowsXML, merges: &merges, totals: &totalsByCategory)
         }
-        _ = renderGrandTotal(startRow: rowIdx, rows: &rowsXML, totals: totalsByCategory)
+        // 总计行前留一空行（样例版式）：只推进计数、不出行元素
+        rowIdx += 1
+        let nextRow = renderGrandTotal(startRow: rowIdx, rows: &rowsXML, merges: &merges, totals: totalsByCategory)
+        let lastRow = nextRow - 1
 
         let body = rowsXML.joined(separator: "")
+        let mergeXML = merges.isEmpty ? "" :
+            "<mergeCells count=\"\(merges.count)\">"
+            + merges.map { "<mergeCell ref=\"\($0)\"/>" }.joined()
+            + "</mergeCells>"
         return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
             + "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+            + "<sheetViews><sheetView workbookViewId=\"0\">"
+            + "<pane ySplit=\"1\" topLeftCell=\"A2\" activePane=\"bottomLeft\" state=\"frozen\"/>"
+            + "<selection pane=\"bottomLeft\" activeCell=\"A2\" sqref=\"A2\"/>"
+            + "</sheetView></sheetViews>"
+            + "<cols>"
+            + "<col min=\"1\" max=\"1\" width=\"14\" customWidth=\"1\"/>"
+            + "<col min=\"2\" max=\"2\" width=\"18\" customWidth=\"1\"/>"
+            + "<col min=\"3\" max=\"3\" width=\"12\" customWidth=\"1\"/>"
+            + "<col min=\"4\" max=\"4\" width=\"30\" customWidth=\"1\"/>"
+            + "<col min=\"5\" max=\"5\" width=\"24\" customWidth=\"1\"/>"
+            + "</cols>"
             + "<sheetData>" + body + "</sheetData>"
+            + "<autoFilter ref=\"A1:E\(lastRow)\"/>"
+            + mergeXML
             + "<pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\" footer=\"0.3\"/>"
+            + "<pageSetup orientation=\"landscape\"/>"
             + "</worksheet>"
     }
 
@@ -298,18 +329,85 @@ enum ExcelBuilder {
         return String(format: "%.2f", v)
     }
 
+    /// 千分位 + 两位小数（合计/总计的金额文本用，如 1,703.50）
+    private static func fmtMoney(_ v: Double) -> String {
+        groupThousands(fmtNumber(v))
+    }
+
+    /// 四舍五入到整数 + 千分位（总计行分类明细用，如 1,999）
+    private static func fmtIntGrouped(_ v: Double) -> String {
+        groupThousands(String(Int(v.rounded())))
+    }
+
+    private static func groupThousands(_ s: String) -> String {
+        var intPart = s
+        var frac = ""
+        if let dot = s.firstIndex(of: ".") {
+            intPart = String(s[..<dot])
+            frac = String(s[dot...])
+        }
+        var out = ""
+        for (i, ch) in intPart.reversed().enumerated() {
+            if i > 0, i % 3 == 0 { out.append(",") }
+            out.append(ch)
+        }
+        return String(out.reversed()) + frac
+    }
+
+    /// MMDD → MM/DD（样例的日期写法）
+    private static func slashMMDD(_ mmdd: String) -> String {
+        guard mmdd.count == 4 else { return mmdd }
+        return "\(mmdd.prefix(2))/\(mmdd.suffix(2))"
+    }
+
+    /// 票据首日期（MM/DD 形式）
+    private static func firstSlash(_ b: BillInfo) -> String {
+        slashMMDD(firstMMDD(b))
+    }
+
+    /// 备注列文件名：优先整理后的目标文件名（与 ZIP 包内一致），未整理时回退原文件名
+    private static func noteName(_ b: BillInfo) -> String {
+        b.targetFilename.isEmpty ? b.sourceFile : b.targetFilename
+    }
+
+    /// 通信费月份标签：month 字段（YYYY-MM）→「10月」；缺失时用日期月份
+    private static func telecomMonth(_ b: BillInfo) -> String {
+        if let m = b.fields["month"]?.flatMap({ $0 }), m.count >= 7 {
+            let mm = String(m.dropFirst(5).prefix(2))
+            return "\(Int(mm) ?? 0)月"
+        }
+        let s = b.dateRange.start
+        if s.count >= 7 {
+            let mm = String(s.dropFirst(5).prefix(2))
+            return "\(Int(mm) ?? 0)月"
+        }
+        return ""
+    }
+
+    /// 小计行（样例版式：只有 B 标签 + C 金额两格，A/D/E 不出单元格）
+    private static func subtotalRow(idx: Int, label: String, amount: Double) -> String {
+        "<row r=\"\(idx)\">"
+            + Self.makeInlineStringCell(ref: "B\(idx)", value: label, style: 11)
+            + (amount > 0
+                ? Self.makeNumberCell(ref: "C\(idx)", value: amount, style: 10)
+                : Self.makeInlineStringCell(ref: "C\(idx)", value: "-", style: 3))
+            + "</row>"
+    }
+
     // MARK: - 行程渲染
 
     private static func renderTrip(
         _ trip: TripGroup,
         startRow: Int,
         rows: inout [String],
+        merges: inout [String],
         totals: inout [String: Double]
     ) -> Int {
         var rowIdx = startRow
 
-        // 行程标题
+        // 行程标题（A:E 合并）
         rows.append(Self.makeMergedRow(idx: rowIdx, text: "【\(trip.dirname)】", style: 2))
+        merges.append("A\(rowIdx):E\(rowIdx)")
         rowIdx += 1
 
         // 分类
@@ -336,7 +434,7 @@ enum ExcelBuilder {
                     ("B", "-", 5),
                     ("C", "-", 5),
                     ("D", route, 0),
-                    ("E", b.sourceFile, 0)
+                    ("E", Self.noteName(b), 0)
                 ]
                 rows.append(Self.makeRow(idx: rowIdx, cells: cells))
                 rowIdx += 1
@@ -344,194 +442,146 @@ enum ExcelBuilder {
             var sub: Double = 0
             for b in gas {
                 let cat = b.billType == .tollInvoice ? "通行费" : "加油费"
-                let date = Self.firstMMDD(b)
+                let date = Self.firstSlash(b)
                 if b.amount > 0 { sub += b.amount; tripTotal += b.amount }
                 rows.append(Self.makeRow(idx: rowIdx, cells: [
                     ("A", cat, 0),
                     ("B", date, 5),
                     ("C", Self.fmtNumber(b.amount), 4),
                     ("D", "", 0),
-                    ("E", b.sourceFile, 0)
+                    ("E", Self.noteName(b), 0)
                 ], amountC: b.amount))
                 rowIdx += 1
             }
-            // 拼小计行（C 列用 number cell）：手拼避免 cells 限制
-            let subRow = "<row r=\"\(rowIdx)\">"
-                + Self.makeInlineStringCell(ref: "A\(rowIdx)", value: "", style: 0)
-                + Self.makeInlineStringCell(ref: "B\(rowIdx)", value: "自驾车小计", style: 6)
-                + (sub > 0
-                    ? Self.makeNumberCell(ref: "C\(rowIdx)", value: sub, style: 3)
-                    : Self.makeInlineStringCell(ref: "C\(rowIdx)", value: "-", style: 3))
-                + Self.makeInlineStringCell(ref: "D\(rowIdx)", value: "", style: 0)
-                + Self.makeInlineStringCell(ref: "E\(rowIdx)", value: "", style: 0)
-                + "</row>"
-            rows.append(subRow)
+            rows.append(Self.subtotalRow(idx: rowIdx, label: "自驾车小计", amount: sub))
             rowIdx += 1
             totals["自驾车", default: 0] += sub
         }
 
-        // 1. 交通
-        if !transport.isEmpty {
-            rows.append(Self.makeRow(idx: rowIdx, cells: [
-                ("A", "铁路交通", 6), ("B", "", 0), ("C", "", 0), ("D", "", 0), ("E", "", 0)
-            ]))
-            rowIdx += 1
-            var sub: Double = 0
-            for b in transport {
-                let date = Self.firstMMDD(b)
-                let cat = b.billType == .boardingPass ? "登机牌" :
-                          b.billType == .flightItinerary ? "机票" : "火车"
-                let route = b.billType == .boardingPass ? "" : "\(b.fromCity)-\(b.toCity)"
-                if b.amount > 0 { sub += b.amount; tripTotal += b.amount }
-                // 金额列单独处理
-                let row = "<row r=\"\(rowIdx)\">"
-                    + Self.makeInlineStringCell(ref: "A\(rowIdx)", value: cat, style: 0)
-                    + Self.makeInlineStringCell(ref: "B\(rowIdx)", value: date, style: 5)
-                    + (b.amount > 0
-                        ? Self.makeNumberCell(ref: "C\(rowIdx)", value: b.amount, style: 4)
-                        : Self.makeInlineStringCell(ref: "C\(rowIdx)", value: "-", style: 5))
-                    + Self.makeInlineStringCell(ref: "D\(rowIdx)", value: route, style: 0)
-                    + Self.makeInlineStringCell(ref: "E\(rowIdx)", value: b.sourceFile, style: 0)
-                    + "</row>"
-                rows.append(row)
-                rowIdx += 1
-            }
-            // 交通小计
-            let subRow = "<row r=\"\(rowIdx)\">"
-                + Self.makeInlineStringCell(ref: "A\(rowIdx)", value: "", style: 0)
-                + Self.makeInlineStringCell(ref: "B\(rowIdx)", value: "交通小计", style: 6)
-                + (sub > 0
-                    ? Self.makeNumberCell(ref: "C\(rowIdx)", value: sub, style: 3)
-                    : Self.makeInlineStringCell(ref: "C\(rowIdx)", value: "-", style: 3))
-                + Self.makeInlineStringCell(ref: "D\(rowIdx)", value: "", style: 0)
-                + Self.makeInlineStringCell(ref: "E\(rowIdx)", value: "", style: 0)
-                + "</row>"
-            rows.append(subRow)
-            rowIdx += 1
-            totals["交通", default: 0] += sub
-        }
-
-        // 2. 酒店（同一住宿只计一次。配对以 finalize 写入的 pairedFolioUID 为准——
-        //    旧实现在这里按“首个金额相等”另配一遍，一票多住时会把发票再计一次；
-        //    老清单没有任何配对信息时才回退金额配对）
-        if !hotelFolios.isEmpty || !hotelInvoices.isEmpty {
-            var sub: Double = 0
-            let folioUIDs = Set(hotelFolios.map { $0.uid })
-            let hasPairingInfo = hotelInvoices.contains { $0.pairedFolioUID != nil }
-            var folioHasInvoice: [String: Bool] = [:]
-            var standaloneInvoices: [BillInfo] = []
-            if hasPairingInfo {
-                for folio in hotelFolios {
-                    folioHasInvoice[folio.uid] = hotelInvoices.contains { $0.pairedFolioUID == folio.uid }
-                }
-                standaloneInvoices = hotelInvoices.filter { inv in
-                    !(inv.pairedFolioUID.map { folioUIDs.contains($0) } ?? false)
-                }
-            } else {
-                var used = Set<Int>()
-                for folio in hotelFolios {
-                    if let i = hotelInvoices.indices.first(where: { i in
-                        !used.contains(i) && abs(hotelInvoices[i].amount - folio.amount) < 0.01
-                    }) {
-                        used.insert(i)
-                        folioHasInvoice[folio.uid] = true
-                    } else {
-                        folioHasInvoice[folio.uid] = false
-                    }
-                }
-                standaloneInvoices = hotelInvoices.indices.filter { !used.contains($0) }.map { hotelInvoices[$0] }
-            }
-
-            for folio in hotelFolios {
-                let range = Self.hotelDateRange(folio)
-                let city = folio.fields["city"]?.flatMap { $0 } ?? folio.fields["hotel_name"]?.flatMap { $0 } ?? ""
-                if folio.amount > 0 { sub += folio.amount; tripTotal += folio.amount }
-                rows.append(Self.hotelRow(range: range, city: city, amount: folio.amount, hasInvoice: folioHasInvoice[folio.uid] ?? false, rowIdx: rowIdx))
-                rowIdx += 1
-            }
-            for inv in standaloneInvoices {
-                let range = Self.hotelDateRange(inv)
-                let city = inv.fields["city"]?.flatMap { $0 } ?? inv.fields["hotel_name"]?.flatMap { $0 } ?? ""
-                if inv.amount > 0 { sub += inv.amount; tripTotal += inv.amount }
-                rows.append(Self.hotelRow(range: range, city: city, amount: inv.amount, hasInvoice: true, rowIdx: rowIdx))
-                rowIdx += 1
-            }
-
-            let subRow = "<row r=\"\(rowIdx)\">"
-                + Self.makeInlineStringCell(ref: "A\(rowIdx)", value: "", style: 0)
-                + Self.makeInlineStringCell(ref: "B\(rowIdx)", value: "酒店小计", style: 6)
-                + (sub > 0
-                    ? Self.makeNumberCell(ref: "C\(rowIdx)", value: sub, style: 3)
-                    : Self.makeInlineStringCell(ref: "C\(rowIdx)", value: "-", style: 3))
-                + Self.makeInlineStringCell(ref: "D\(rowIdx)", value: "", style: 0)
-                + Self.makeInlineStringCell(ref: "E\(rowIdx)", value: "", style: 0)
-                + "</row>"
-            rows.append(subRow)
-            rowIdx += 1
-            totals["酒店", default: 0] += sub
-        }
-
-        // 3. 滴滴：发票金额计入；未被发票覆盖的行程单金额也计入，避免静默漏钱。
-        //    覆盖按子集和判定（一张汇总发票可覆盖多张行程单），见 didiCoveredTrips
-        if !didiTrip.isEmpty || !didiInvoice.isEmpty {
-            var didiTotal: Double = 0
-            let coveredTrips = Self.didiCoveredTrips(
-                invoiceAmounts: didiInvoice.map { $0.amount },
-                tripAmounts: didiTrip.map { $0.amount })
-            for inv in didiInvoice where inv.amount > 0 {
-                didiTotal += inv.amount; tripTotal += inv.amount
-            }
-            for ti in didiTrip.indices where !coveredTrips.contains(ti) && didiTrip[ti].amount > 0 {
-                didiTotal += didiTrip[ti].amount
-                tripTotal += didiTrip[ti].amount
-            }
-            let lastArrival = transport.last?.toCity ?? ""
-            let lastDate = transport.last.map { Self.firstMMDD($0) } ?? ""
-            let arrivalText = lastArrival.isEmpty ? "" : "返回\(lastArrival): \(lastDate)"
-            let summaryText = "行程单\(didiTrip.count)份, 发票\(didiInvoice.count)份"
-            let periodText = "共\(didiTrip.count)段行程"
+        // 1. 交通（固定骨架：标签行 + 票据行 + 小计，无票据时也出小计「-」）
+        //    标签行只有 A 一格；类别名：登机牌 / 火车/机票（火车票与机票行程单同名）
+        rows.append("<row r=\"\(rowIdx)\">"
+            + Self.makeInlineStringCell(ref: "A\(rowIdx)", value: "铁路交通", style: 6)
+            + "</row>")
+        rowIdx += 1
+        var transportSub: Double = 0
+        for b in transport {
+            let date = Self.firstSlash(b)
+            let cat = b.billType == .boardingPass ? "登机牌" : "火车/机票"
+            let route = (b.fromCity.isEmpty || b.toCity.isEmpty) ? "" : "\(b.fromCity)-\(b.toCity)"
+            if b.amount > 0 { transportSub += b.amount; tripTotal += b.amount }
             let row = "<row r=\"\(rowIdx)\">"
-                + Self.makeInlineStringCell(ref: "A\(rowIdx)", value: "滴滴出行", style: 0)
-                + Self.makeInlineStringCell(ref: "B\(rowIdx)", value: periodText, style: 5)
-                + (didiTotal > 0
-                    ? Self.makeNumberCell(ref: "C\(rowIdx)", value: didiTotal, style: 4)
-                    : Self.makeInlineStringCell(ref: "C\(rowIdx)", value: "?", style: 5))
-                + Self.makeInlineStringCell(ref: "D\(rowIdx)", value: arrivalText, style: 0)
-                + Self.makeInlineStringCell(ref: "E\(rowIdx)", value: summaryText, style: 0)
+                + Self.makeInlineStringCell(ref: "A\(rowIdx)", value: cat, style: 0)
+                + Self.makeInlineStringCell(ref: "B\(rowIdx)", value: date, style: 5)
+                + (b.amount > 0
+                    ? Self.makeNumberCell(ref: "C\(rowIdx)", value: b.amount, style: 4)
+                    : Self.makeInlineStringCell(ref: "C\(rowIdx)", value: "-", style: 5))
+                + Self.makeInlineStringCell(ref: "D\(rowIdx)", value: route, style: 0)
+                + Self.makeInlineStringCell(ref: "E\(rowIdx)", value: Self.noteName(b), style: 0)
                 + "</row>"
             rows.append(row)
             rowIdx += 1
-            totals["滴滴", default: 0] += didiTotal
+        }
+        rows.append(Self.subtotalRow(idx: rowIdx, label: "交通小计", amount: transportSub))
+        rowIdx += 1
+        totals["交通", default: 0] += transportSub
+
+        // 2. 酒店（同一住宿只计一次。配对以 finalize 写入的 pairedFolioUID 为准——
+        //    旧实现在这里按“首个金额相等”另配一遍，一票多住时会把发票再计一次；
+        //    老清单没有任何配对信息时才回退金额配对。小计行固定骨架：无住宿也出「-」）
+        var hotelSub: Double = 0
+        let folioUIDs = Set(hotelFolios.map { $0.uid })
+        let hasPairingInfo = hotelInvoices.contains { $0.pairedFolioUID != nil }
+        var folioHasInvoice: [String: Bool] = [:]
+        var standaloneInvoices: [BillInfo] = []
+        if hasPairingInfo {
+            for folio in hotelFolios {
+                folioHasInvoice[folio.uid] = hotelInvoices.contains { $0.pairedFolioUID == folio.uid }
+            }
+            standaloneInvoices = hotelInvoices.filter { inv in
+                !(inv.pairedFolioUID.map { folioUIDs.contains($0) } ?? false)
+            }
+        } else {
+            var used = Set<Int>()
+            for folio in hotelFolios {
+                if let i = hotelInvoices.indices.first(where: { i in
+                    !used.contains(i) && abs(hotelInvoices[i].amount - folio.amount) < 0.01
+                }) {
+                    used.insert(i)
+                    folioHasInvoice[folio.uid] = true
+                } else {
+                    folioHasInvoice[folio.uid] = false
+                }
+            }
+            standaloneInvoices = hotelInvoices.indices.filter { !used.contains($0) }.map { hotelInvoices[$0] }
         }
 
-        // 4. 餐饮
+        for folio in hotelFolios {
+            let range = Self.hotelDateRange(folio)
+            let city = folio.fields["city"]?.flatMap { $0 } ?? folio.fields["hotel_name"]?.flatMap { $0 } ?? ""
+            if folio.amount > 0 { hotelSub += folio.amount; tripTotal += folio.amount }
+            rows.append(Self.hotelRow(range: range, city: city, amount: folio.amount, hasInvoice: folioHasInvoice[folio.uid] ?? false, rowIdx: rowIdx))
+            rowIdx += 1
+        }
+        for inv in standaloneInvoices {
+            let range = Self.hotelDateRange(inv)
+            let city = inv.fields["city"]?.flatMap { $0 } ?? inv.fields["hotel_name"]?.flatMap { $0 } ?? ""
+            if inv.amount > 0 { hotelSub += inv.amount; tripTotal += inv.amount }
+            rows.append(Self.hotelRow(range: range, city: city, amount: inv.amount, hasInvoice: true, rowIdx: rowIdx))
+            rowIdx += 1
+        }
+        rows.append(Self.subtotalRow(idx: rowIdx, label: "酒店小计", amount: hotelSub))
+        rowIdx += 1
+        totals["酒店", default: 0] += hotelSub
+
+        // 3. 滴滴（固定骨架：每段一行汇总，无滴滴时也出「共0段行程 / ?」占位，与样例一致）：
+        //    发票金额计入；未被发票覆盖的行程单金额也计入，避免静默漏钱。
+        //    覆盖按子集和判定（一张汇总发票可覆盖多张行程单），见 didiCoveredTrips
+        var didiTotal: Double = 0
+        let coveredTrips = Self.didiCoveredTrips(
+            invoiceAmounts: didiInvoice.map { $0.amount },
+            tripAmounts: didiTrip.map { $0.amount })
+        for inv in didiInvoice where inv.amount > 0 {
+            didiTotal += inv.amount; tripTotal += inv.amount
+        }
+        for ti in didiTrip.indices where !coveredTrips.contains(ti) && didiTrip[ti].amount > 0 {
+            didiTotal += didiTrip[ti].amount
+            tripTotal += didiTrip[ti].amount
+        }
+        let lastArrival = transport.last?.toCity ?? ""
+        let lastDate = slashMMDD(trip.lastMMDD)
+        let arrivalText = lastArrival.isEmpty ? "" : "返回\(lastArrival): \(lastDate)"
+        let summaryText = "行程单\(didiTrip.count)份, 发票\(didiInvoice.count)份"
+        let periodText = "共\(didiTrip.count)段行程"
+        let didiRow = "<row r=\"\(rowIdx)\">"
+            + Self.makeInlineStringCell(ref: "A\(rowIdx)", value: "滴滴出行", style: 0)
+            + Self.makeInlineStringCell(ref: "B\(rowIdx)", value: periodText, style: 5)
+            + (didiTotal > 0
+                ? Self.makeNumberCell(ref: "C\(rowIdx)", value: didiTotal, style: 4)
+                : Self.makeInlineStringCell(ref: "C\(rowIdx)", value: "?", style: 5))
+            + Self.makeInlineStringCell(ref: "D\(rowIdx)", value: arrivalText, style: 0)
+            + Self.makeInlineStringCell(ref: "E\(rowIdx)", value: summaryText, style: 0)
+            + "</row>"
+        rows.append(didiRow)
+        rowIdx += 1
+        totals["滴滴", default: 0] += didiTotal
+
+        // 4. 餐饮（样例版式：只出票据行，不出小计——金额直接进本段合计）
         if !dining.isEmpty {
             var sub: Double = 0
             let sorted = dining.sorted { Self.firstMMDD($0) < Self.firstMMDD($1) }
             for b in sorted {
-                let date = Self.firstMMDD(b)
+                let date = Self.firstSlash(b)
                 if b.amount > 0 { sub += b.amount; tripTotal += b.amount }
                 rows.append(Self.makeRow(idx: rowIdx, cells: [
                     ("A", "餐饮", 0),
                     ("B", date, 5),
                     ("C", Self.fmtNumber(b.amount), 4),
                     ("D", "", 0),
-                    ("E", b.sourceFile, 0)
+                    ("E", Self.noteName(b), 0)
                 ], amountC: b.amount))
                 rowIdx += 1
             }
-            // 餐饮小计（与其余分类对齐，方便人工核对）
-            let subRow = "<row r=\"\(rowIdx)\">"
-                + Self.makeInlineStringCell(ref: "A\(rowIdx)", value: "", style: 0)
-                + Self.makeInlineStringCell(ref: "B\(rowIdx)", value: "餐饮小计", style: 6)
-                + (sub > 0
-                    ? Self.makeNumberCell(ref: "C\(rowIdx)", value: sub, style: 3)
-                    : Self.makeInlineStringCell(ref: "C\(rowIdx)", value: "-", style: 3))
-                + Self.makeInlineStringCell(ref: "D\(rowIdx)", value: "", style: 0)
-                + Self.makeInlineStringCell(ref: "E\(rowIdx)", value: "", style: 0)
-                + "</row>"
-            rows.append(subRow)
-            rowIdx += 1
             totals["餐饮", default: 0] += sub
         }
 
@@ -548,11 +598,12 @@ enum ExcelBuilder {
             totals["其他", default: 0] += sub
         }
 
-        // 行程合计
+        // 行程合计（A:E 合并）
         let grandText = tripTotal > 0
-            ? "本段合计: ¥\(Self.fmtNumber(tripTotal))"
+            ? "本段合计: ¥\(Self.fmtMoney(tripTotal))"
             : "本段合计: -"
-        rows.append(Self.makeMergedRow(idx: rowIdx, text: grandText, style: 7))
+        rows.append(Self.makeMergedRow(idx: rowIdx, text: grandText, style: 9))
+        merges.append("A\(rowIdx):E\(rowIdx)")
         rowIdx += 1
 
         return rowIdx
@@ -564,11 +615,15 @@ enum ExcelBuilder {
         _ localBills: [BillInfo],
         startRow: Int,
         rows: inout [String],
+        merges: inout [String],
         totals: inout [String: Double]
     ) -> Int {
         var rowIdx = startRow
 
         rows.append(Self.makeMergedRow(idx: rowIdx, text: "【本地费用】", style: 2))
+        merges.append("A\(rowIdx):E\(rowIdx)")
+        rowIdx += 1
+        // 段标题后留一空行（样例版式）
         rowIdx += 1
 
         let telecom = localBills.filter { $0.billType == .telecom }
@@ -578,28 +633,21 @@ enum ExcelBuilder {
         let vat = localBills.filter { $0.billType == .hotelInvoice }
         var localTotal: Double = 0
 
-        // 通信
+        // 通信（B 列是月份标签「10月」，不是日期）
         if !telecom.isEmpty {
             var sub: Double = 0
             for b in telecom {
-                let month = Self.firstMMDD(b)
                 if b.amount > 0 { sub += b.amount }
                 rows.append(Self.makeRow(idx: rowIdx, cells: [
                     ("A", "通信费", 0),
-                    ("B", month, 5),
+                    ("B", Self.telecomMonth(b), 5),
                     ("C", Self.fmtNumber(b.amount), 4),
                     ("D", "", 0),
-                    ("E", b.sourceFile, 0)
+                    ("E", Self.noteName(b), 0)
                 ], amountC: b.amount))
                 rowIdx += 1
             }
-            rows.append(Self.makeRow(idx: rowIdx, cells: [
-                ("A", "", 0),
-                ("B", "通信小计", 6),
-                ("C", Self.fmtNumber(sub), 4),
-                ("D", "", 0),
-                ("E", "", 0)
-            ], amountC: sub))
+            rows.append(Self.subtotalRow(idx: rowIdx, label: "通信小计", amount: sub))
             rowIdx += 1
             totals["通信", default: 0] += sub
             localTotal += sub
@@ -636,14 +684,14 @@ enum ExcelBuilder {
             var sub: Double = 0
             let sorted = dining.sorted { Self.firstMMDD($0) < Self.firstMMDD($1) }
             for b in sorted {
-                let date = Self.firstMMDD(b)
+                let date = Self.firstSlash(b)
                 if b.amount > 0 { sub += b.amount }
                 rows.append(Self.makeRow(idx: rowIdx, cells: [
                     ("A", "餐饮", 0),
                     ("B", date, 5),
                     ("C", Self.fmtNumber(b.amount), 4),
                     ("D", "", 0),
-                    ("E", b.sourceFile, 0)
+                    ("E", Self.noteName(b), 0)
                 ], amountC: b.amount))
                 rowIdx += 1
             }
@@ -656,14 +704,14 @@ enum ExcelBuilder {
             var sub: Double = 0
             let sorted = vat.sorted { Self.firstMMDD($0) < Self.firstMMDD($1) }
             for b in sorted {
-                let date = Self.firstMMDD(b)
+                let date = Self.firstSlash(b)
                 if b.amount > 0 { sub += b.amount }
                 rows.append(Self.makeRow(idx: rowIdx, cells: [
                     ("A", "发票", 0),
                     ("B", date, 5),
                     ("C", Self.fmtNumber(b.amount), 4),
                     ("D", b.fields["seller_name"]?.flatMap { $0 } ?? "", 0),
-                    ("E", b.sourceFile, 0)
+                    ("E", Self.noteName(b), 0)
                 ], amountC: b.amount))
                 rowIdx += 1
             }
@@ -685,11 +733,12 @@ enum ExcelBuilder {
             localTotal += sub
         }
 
-        // 本地合计
+        // 本地合计（A:E 合并）
         let localText = localTotal > 0
-            ? "本地合计: ¥\(Self.fmtNumber(localTotal))"
+            ? "本地合计: ¥\(Self.fmtMoney(localTotal))"
             : "本地合计: -"
-        rows.append(Self.makeMergedRow(idx: rowIdx, text: localText, style: 7))
+        rows.append(Self.makeMergedRow(idx: rowIdx, text: localText, style: 9))
+        merges.append("A\(rowIdx):E\(rowIdx)")
         rowIdx += 1
 
         return rowIdx
@@ -700,19 +749,24 @@ enum ExcelBuilder {
     private static func renderGrandTotal(
         startRow: Int,
         rows: inout [String],
+        merges: inout [String],
         totals: [String: Double]
     ) -> Int {
         let grandTotal = totals.values.reduce(0, +)
-        // 分类明细与总计同精度（两位小数）：旧实现用 Int() 截断，括号内相加与总计对不上
-        var detail = ""
-        if (totals["自驾车"] ?? 0) > 0 { detail += "自驾车:\(Self.fmtNumber(totals["自驾车"] ?? 0))  " }
-        detail += "交通:\(Self.fmtNumber(totals["交通"] ?? 0))  酒店:\(Self.fmtNumber(totals["酒店"] ?? 0))  滴滴:\(Self.fmtNumber(totals["滴滴"] ?? 0))"
-        if (totals["餐饮"] ?? 0) > 0 { detail += "  餐饮:\(Self.fmtNumber(totals["餐饮"] ?? 0))" }
-        if (totals["通信"] ?? 0) > 0 { detail += "  通信:\(Self.fmtNumber(totals["通信"] ?? 0))" }
-        if (totals["其他"] ?? 0) > 0 { detail += "  其他:\(Self.fmtNumber(totals["其他"] ?? 0))" }
+        // 样例格式：分类明细取整数（四舍五入、千分位），如 (交通:1,999  酒店:7,109  …)；
+        // 与总计的两位小数相加可能差 ±几元，是样例既有口径
+        var parts: [String] = []
+        if (totals["自驾车"] ?? 0) > 0 { parts.append("自驾车:\(Self.fmtIntGrouped(totals["自驾车"] ?? 0))") }
+        parts.append("交通:\(Self.fmtIntGrouped(totals["交通"] ?? 0))")
+        parts.append("酒店:\(Self.fmtIntGrouped(totals["酒店"] ?? 0))")
+        parts.append("滴滴:\(Self.fmtIntGrouped(totals["滴滴"] ?? 0))")
+        if (totals["餐饮"] ?? 0) > 0 { parts.append("餐饮:\(Self.fmtIntGrouped(totals["餐饮"] ?? 0))") }
+        if (totals["通信"] ?? 0) > 0 { parts.append("通信:\(Self.fmtIntGrouped(totals["通信"] ?? 0))") }
+        if (totals["其他"] ?? 0) > 0 { parts.append("其他:\(Self.fmtIntGrouped(totals["其他"] ?? 0))") }
 
-        let text = "报销总计: ¥\(Self.fmtNumber(grandTotal))  (\(detail))"
-        rows.append(Self.makeMergedRow(idx: startRow, text: text, style: 7))
+        let text = "报销总计: ¥\(Self.fmtMoney(grandTotal))  (\(parts.joined(separator: "  ")))"
+        rows.append(Self.makeMergedRow(idx: startRow, text: text, style: 8))
+        merges.append("A\(startRow):E\(startRow)")
         return startRow + 1
     }
 
@@ -737,7 +791,8 @@ enum ExcelBuilder {
         guard !s.isEmpty else { return "" }
         let mmddS = String(s.suffix(5).prefix(5)).replacingOccurrences(of: "-", with: "")
         let mmddE = e.isEmpty ? mmddS : String(e.suffix(5).prefix(5)).replacingOccurrences(of: "-", with: "")
-        return mmddS == mmddE ? mmddS : "\(mmddS)-\(mmddE)"
+        // 样例写法：09/10-09/12
+        return mmddS == mmddE ? slashMMDD(mmddS) : "\(slashMMDD(mmddS))-\(slashMMDD(mmddE))"
     }
 
     private static func isTransportType(_ t: BillType) -> Bool {
@@ -767,10 +822,10 @@ enum ExcelBuilder {
         }
     }
 
-    /// 兜底行：类型名 + 日期 + 金额 + 销方/商户名 + 原文件名
+    /// 兜底行：类型名 + 日期 + 金额 + 销方/商户名 + 目标文件名
     private static func genericRow(_ b: BillInfo, _ rowIdx: Int) -> String {
         let cat = b.billType.displayName
-        let date = Self.firstMMDD(b)
+        let date = Self.firstSlash(b)
         let seller = b.fields["seller_name"]?.flatMap { $0 }
             ?? b.fields["merchant_name"]?.flatMap { $0 }
             ?? b.fields["hotel_name"]?.flatMap { $0 }
@@ -782,7 +837,7 @@ enum ExcelBuilder {
                 ? Self.makeNumberCell(ref: "C\(rowIdx)", value: b.amount, style: 4)
                 : Self.makeInlineStringCell(ref: "C\(rowIdx)", value: "-", style: 5))
             + Self.makeInlineStringCell(ref: "D\(rowIdx)", value: seller, style: 0)
-            + Self.makeInlineStringCell(ref: "E\(rowIdx)", value: b.sourceFile, style: 0)
+            + Self.makeInlineStringCell(ref: "E\(rowIdx)", value: Self.noteName(b), style: 0)
             + "</row>"
     }
 

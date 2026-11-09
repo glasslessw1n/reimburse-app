@@ -49,8 +49,8 @@ struct ExcelBuilderTests {
         let xml = ExcelBuilder.buildSheet(bills: bills, homeCities: ["重庆"])
         let hotelCount = xml.components(separatedBy: "酒店住宿").count - 1
         #expect(hotelCount == 1, "水单+发票应归并为一行，实际 \(hotelCount) 行")
-        #expect(xml.contains("1753.00"), "总计应为 553 + 1200 = 1753")
-        #expect(!xml.contains("2953.00"), "不应重复计入酒店金额")
+        #expect(xml.contains("1,753.00"), "总计应为 553 + 1200 = 1,753（千分位写法）")
+        #expect(!xml.contains("2,953.00"), "不应重复计入酒店金额")
     }
 
     // MARK: - 滴滴子集和覆盖（一期）
@@ -95,7 +95,49 @@ struct ExcelBuilderTests {
         let trip = TripGroup(key: "0910-0912", firstMMDD: "0910", lastMMDD: "0912", cities: ["厦门"],
                              bills: [folio1, folio2, invoice])
         let xml = ExcelBuilder.buildSheet(trips: [trip], localBills: [])
-        #expect(xml.contains("报销总计: ¥1000.00"), "两张水单 500+500，发票只是凭证，不应再计\n\(xml)")
-        #expect(!xml.contains("2000.00"), "一票多住不应双计")
+        #expect(xml.contains("报销总计: ¥1,000.00"), "两张水单 500+500，发票只是凭证，不应再计\n\(xml)")
+        #expect(!xml.contains("2,000.00"), "一票多住不应双计")
+    }
+
+    // MARK: - 样例版式（2026-11-09 附件 0910-1026.xlsx 定版）
+
+    @Test func sampleLayoutSkeleton() {
+        var train = BillInfo(billType: .trainTicket, amount: 553, sourceFile: "火车票.pdf",
+                             fields: ["departure_date": "2026-09-10", "origin_city": "重庆", "destination_city": "厦门"])
+        train.targetFilename = "0910 重庆-厦门 553.pdf"
+        let bills: [BillInfo] = [
+            train,
+            BillInfo(billType: .boardingPass, amount: 0, sourceFile: "登机牌.pdf",
+                     fields: ["departure_date": "2026-09-12", "origin_city": "厦门", "destination_city": "重庆"]),
+            BillInfo(billType: .hotelFolio, amount: 1200, sourceFile: "水单.pdf",
+                     fields: ["check_in_date": "2026-09-10", "check_out_date": "2026-09-12", "city": "厦门"]),
+            BillInfo(billType: .dining, amount: 100, sourceFile: "餐饮.pdf", fields: ["issue_date": "2026-09-11"]),
+        ]
+        let xml = ExcelBuilder.buildSheet(bills: bills, homeCities: ["重庆"])
+        // 日期 MM/DD 写法；火车票与行程单同名「火车/机票」；登机牌也带路线
+        #expect(xml.contains("09/10") && xml.contains("09/12"), "\(xml)")
+        #expect(xml.contains("火车/机票"))
+        #expect(xml.contains("厦门-重庆"))
+        // 备注列写整理后的目标文件名
+        #expect(xml.contains("0910 重庆-厦门 553.pdf"))
+        // 固定骨架：交通/酒店小计在；无滴滴也出汇总占位行；餐饮不出小计
+        #expect(xml.contains("交通小计") && xml.contains("酒店小计"))
+        #expect(xml.contains("共0段行程") && xml.contains("返回重庆: 09/12"))
+        #expect(!xml.contains("餐饮小计"))
+        // 合计/总计：千分位金额 + 分类整数明细
+        #expect(xml.contains("本段合计: ¥1,853.00"))
+        #expect(xml.contains("报销总计: ¥1,853.00  (交通:553  酒店:1,200  滴滴:0  餐饮:100)"))
+        // 版式元素：列宽、首行冻结、段标题/合计/总计三处合并
+        #expect(xml.contains("<cols>") && xml.contains("state=\"frozen\""))
+        #expect(xml.contains("<mergeCells count=\"3\">"))
+    }
+
+    @Test func localTelecomMonthLabel() {
+        let bills = [BillInfo(billType: .telecom, amount: 197.3, sourceFile: "通信.pdf",
+                              fields: ["issue_date": "2026-10-09", "month": "2026-10"])]
+        let xml = ExcelBuilder.buildSheet(bills: bills, homeCities: ["重庆"])
+        #expect(xml.contains("【本地费用】"))
+        #expect(xml.contains("10月"), "通信费 B 列应为月份标签\n\(xml)")
+        #expect(xml.contains("通信小计"))
     }
 }

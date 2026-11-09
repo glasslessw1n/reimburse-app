@@ -9,10 +9,12 @@
 //    自驾行程单（整页）→ 加油/通行费（发票类分档排版）→ 行程证明页 P1（最早+最晚交通票 1×2）
 //    → 交通票 3×2（登机牌不进：只是行程证明，只上证明页且只用起止两张，其余弃用）
 //    → 酒店（水单整页后紧跟其配对发票同页两份）→ 滴滴行程单 → 滴滴发票 → 餐饮 → 其他
-//  本地段：通信（1×2）→ 滴滴行程单 → 滴滴发票 → 餐饮 → 其他。
+//  本地段：通信（发票类分档）→ 滴滴行程单 → 滴滴发票 → 餐饮 → 其他。
 //
-//  发票类分档排版（滴滴发票 / 餐饮 / 加油通行费 / 其他，四类同规，均为左转 90°）：
-//    1 张 → 不拼版，旋转后整页；2 张 → 旋转后 1×2；≥3 张 → 旋转后 2×2。
+//  发票类分档排版（滴滴发票 / 餐饮 / 通信 / 加油通行费 / 其他，同规）：
+//    1 张 → 左转 90° 整页；2 张 → 不旋转 1×2；≥3 张 → 左转 90° 2×2。
+//    （2026-11-09 口径修订：2 张不再旋转——两张竖版发票上下排已足够辨认，
+//     旋转反而要把纸转过来看；1 张与 ≥3 张维持左转。）
 //
 
 import Foundation
@@ -84,8 +86,9 @@ enum PdfComposer {
         let other = bills.filter { !handled.contains($0.billType) }.sorted(by: byDate)
 
         if isLocal {
-            // 本地段：通信 1×2 → 滴滴 → 餐饮/其他（发票类分档）→ 本地酒店发票归其他兜底
-            try grid(bills: telecom, rows: 1, cols: 2, rotate: false, loader: loader, into: &pages)
+            // 本地段：通信（发票类分档，与行程段同规）→ 滴滴 → 餐饮/其他（发票类分档）
+            // → 本地酒店发票归其他兜底
+            try invoiceGrid(bills: telecom, loader: loader, into: &pages)
             try didiSection(trips: didiTrips, invoices: didiInvoices, loader: loader, into: &pages)
             try invoiceGrid(bills: dining, loader: loader, into: &pages)
             try invoiceGrid(bills: other + hotelInvoices, loader: loader, into: &pages)
@@ -155,7 +158,7 @@ enum PdfComposer {
         try invoiceGrid(bills: invoices, loader: loader, cropToContent: true, into: &pages)
     }
 
-    /// 发票类分档排版（左转 90°）：1 张整页旋转；2 张 1×2 旋转；≥3 张 2×2 旋转
+    /// 发票类分档排版：1 张左转 90° 整页；2 张不旋转 1×2；≥3 张左转 90° 2×2
     private static func invoiceGrid(
         bills: [BillInfo], loader: SourceLoader, cropToContent: Bool = false, into pages: inout [ComposedPage]
     ) throws {
@@ -165,7 +168,7 @@ enum PdfComposer {
                 gridPages([p], rows: 1, cols: 1, rotate: true, into: &pages)
             }
         } else if bills.count == 2 {
-            try grid(bills: bills, rows: 2, cols: 1, rotate: true, loader: loader, cropToContent: cropToContent, into: &pages)
+            try grid(bills: bills, rows: 2, cols: 1, rotate: false, loader: loader, cropToContent: cropToContent, into: &pages)
         } else {
             try grid(bills: bills, rows: 2, cols: 2, rotate: true, loader: loader, cropToContent: cropToContent, into: &pages)
         }
