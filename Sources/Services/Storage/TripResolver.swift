@@ -30,6 +30,7 @@ enum TripResolver {
     ]
 
     /// 适用「驻地优先」的类型：已知城市全部为驻地时直接归「本地」，不被日期吸进行程
+    /// （滴滴另有「边界日例外」：落在行程出发/返回日的驻地滴滴是接驳，归该行程，见归属循环）
     /// - 滴滴行程单：起终点都在驻地即本地出行。驻地同城的下辖市/区（如重庆的万州）
     ///   是独立地名、与驻地不相等，不会触发本规则，会正常归入对应行程
     /// - 滴滴发票：finalize 的 linkDidiInvoices 已让配对发票继承行程单的日期与城市，
@@ -171,9 +172,24 @@ enum TripResolver {
         // non-anchor：先驻地优先，再按「所有相关完整日期」就近归到 trip（≤7 天）
         var local: [BillInfo] = []
         for non in nonAnchors {
-            // 驻地优先（压过日期归属）：万州行程窗口期内的重庆本地滴滴/餐饮
+            // 驻地优先（压过日期就近归属）：万州行程窗口期内的重庆本地滴滴/餐饮
             // 不再因日期重叠被吸进万州行程
             if isHomeBound(non, homeCities: homeCities) {
+                // 边界日例外（仅滴滴行程单/发票）：城市同为驻地无法区分「本地日常
+                // 打车」与「出发/返回日去回车站机场的接驳」——后者只会发生在行程
+                // 首日或末日。驻地滴滴日期命中某行程的出发日/返回日 → 归该行程；
+                // 其余驻地滴滴仍归本地。餐饮/通信/其他无接驳语义，不适用本例外。
+                if non.billType == .didiTrip || non.billType == .didiInvoice {
+                    let pool = fullDatePool(non)
+                    if let idx = groups.indices.first(where: {
+                        pool.contains(groupFirst[$0]) || pool.contains(groupLast[$0])
+                    }) {
+                        var b = non
+                        b.targetSubdir = groups[idx].dirname
+                        groups[idx].bills.append(b)
+                        continue
+                    }
+                }
                 var b = non
                 b.targetSubdir = "本地"
                 local.append(b)

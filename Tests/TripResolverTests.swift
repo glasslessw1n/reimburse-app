@@ -370,6 +370,38 @@ struct TripResolverTests {
         #expect(!r.trips[0].bills.contains { $0.billType == .didiTrip })
     }
 
+    /// 边界日例外：出发日的驻地滴滴是去车站的接驳 → 归行程（不归本地）
+    @Test func homeDidiOnDepartureDayJoinsTrip() {
+        var bills = wanzhouAnchors()
+        bills.append(anchor(.didiTrip, from: "重庆", to: "重庆", date: "2026-10-20", amount: 42))
+        let r = resolve(bills)
+        #expect(r.trips[0].bills.contains { $0.billType == .didiTrip },
+                "出发日驻地滴滴应归行程\n\(dumpTrips(r.trips))")
+        #expect(!r.local.contains { $0.billType == .didiTrip })
+    }
+
+    /// 边界日例外：返回日的驻地滴滴是从车站回家 → 归行程；其发票同日跟随
+    @Test func homeDidiOnReturnDayJoinsTrip() {
+        var bills = wanzhouAnchors()
+        bills.append(anchor(.didiTrip, from: "重庆", to: "重庆", date: "2026-10-22", amount: 38))
+        bills.append(anchor(.didiInvoice, from: "重庆", to: "重庆", date: "2026-10-22", amount: 38))
+        let r = resolve(bills)
+        #expect(r.trips[0].bills.contains { $0.billType == .didiTrip },
+                "返回日驻地滴滴应归行程\n\(dumpTrips(r.trips))")
+        #expect(r.trips[0].bills.contains { $0.billType == .didiInvoice },
+                "返回日驻地滴滴发票应跟随归行程\n\(dumpTrips(r.trips))")
+    }
+
+    /// 边界日例外仅限滴滴：出发日当天在驻地开具的餐饮仍归本地
+    @Test func homeDiningOnDepartureDayStaysLocal() {
+        var bills = wanzhouAnchors()
+        bills.append(BillInfo(billType: .dining, amount: 76, sourceFile: "dd.pdf",
+                              fields: ["issue_date": "2026-10-20", "city": "重庆"]))
+        let r = resolve(bills)
+        #expect(r.local.contains { $0.sourceFile == "dd.pdf" },
+                "餐饮无接驳语义，驻地开具一律本地\n\(dumpTrips(r.trips))")
+    }
+
     /// 万州当地滴滴（城市为万州）→ 归万州行程；万州是独立地名，不算驻地
     @Test func awayDidiTripStaysInTrip() {
         var bills = wanzhouAnchors()
