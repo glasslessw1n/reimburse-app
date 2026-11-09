@@ -722,9 +722,9 @@ final class SessionManager {
 
         switch bt {
         case .trainTicket:
-            // 车次是 BillTypeFields 规格里的文件名组成（旧实现漏了，同日同线同额会撞名）
-            let trainNo = f["train_no"].flatMap { $0 } ?? ""
-            let parts = [dateMmdd, trainNo, route, fmtAmount].filter { !$0.isEmpty }
+            // 文件名不含车次（用户口径 2026-11-09）：日期 + 路线 + 金额即可；
+            // 同日同线同额撞名由 finalize 的 uniquify 追加序号解决，不靠车次区分
+            let parts = [dateMmdd, route, fmtAmount].filter { !$0.isEmpty }
             return parts.isEmpty ? "火车票\(dateMmdd)\(suf)" : parts.joined(separator: " ") + suf
 
         case .flightItinerary:

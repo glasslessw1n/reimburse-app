@@ -26,7 +26,7 @@ enum BillTypeFields {
             required: ["departure_date", "origin_city", "destination_city", "amount"],
             optional: ["train_no", "departure_time", "seat_type", "ticket_no", "passenger_name", "id_no_masked"],
             sortable: ["departure_date", "amount"],
-            fileNamePart: ["departure_date", "train_no", "origin_city", "destination_city", "amount"]
+            fileNamePart: ["departure_date", "origin_city", "destination_city", "amount"]
         ),
         .flightItinerary: BillFieldSpec(
             required: ["departure_date", "origin_city", "destination_city", "amount"],
