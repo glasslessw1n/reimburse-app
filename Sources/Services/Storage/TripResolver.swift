@@ -29,10 +29,27 @@ enum TripResolver {
         .trainTicket, .flightItinerary, .boardingPass, .selfDriveSheet
     ]
 
+    /// 适用「驻地优先」的类型：已知城市全部为驻地时直接归「本地」，不被日期吸进行程
+    /// （滴滴另有「边界日例外」：落在行程出发/返回日的驻地滴滴是接驳，归该行程，见归属循环）
+    /// - 滴滴行程单：起终点都在驻地即本地出行。驻地同城的下辖市/区（如重庆的万州）
+    ///   是独立地名、与驻地不相等，不会触发本规则，会正常归入对应行程
+    /// - 滴滴发票：finalize 的 linkDidiInvoices 已让配对发票继承行程单的日期与城市，
+    ///   同规则即可让发票跟随其行程单归属；未配对发票无城市信息，走日期逻辑并带待复核标记
+    /// - 餐饮/通信/其他：按开具地（city 字段，识别时从销售方名称/地址提取）判断
+    private static let homeBoundTypes: Set<BillType> = [.didiTrip, .didiInvoice, .dining, .telecom, .other]
+
+    /// 票据是否命中「驻地优先」：类型适用、城市已知、且全部为驻地
+    private static func isHomeBound(_ bill: BillInfo, homeCities: Set<String>) -> Bool {
+        guard homeBoundTypes.contains(bill.billType) else { return false }
+        let cs = bill.cities.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard !cs.isEmpty else { return false }
+        return cs.allSatisfy { isHomeCity($0, in: homeCities) }
+    }
+
     /// 主入口
     static func assignTrips(bills: [BillInfo], homeCities: Set<String>) -> (trips: [TripGroup], local: [BillInfo]) {
-        // 常驻地集合与票据城市用同一套规范化（trim+小写），避免写法差异让常驻地判断失效
-        let homeCities = Set(homeCities.map { $0.trimmingCharacters(in: .whitespaces).lowercased() })
+        // 常驻地集合与票据城市用同一套规范化，避免写法差异让常驻地判断失效
+        let homeCities = Set(homeCities.map { normalizeCity($0) })
         var anchors: [BillInfo] = []
         var nonAnchors: [BillInfo] = []
         for b in bills {
@@ -152,9 +169,32 @@ enum TripResolver {
             }
         }
 
-        // non-anchor：按「所有相关完整日期」就近归到 trip（≤7 天）
+        // non-anchor：先驻地优先，再按「所有相关完整日期」就近归到 trip（≤7 天）
         var local: [BillInfo] = []
         for non in nonAnchors {
+            // 驻地优先（压过日期就近归属）：万州行程窗口期内的重庆本地滴滴/餐饮
+            // 不再因日期重叠被吸进万州行程
+            if isHomeBound(non, homeCities: homeCities) {
+                // 边界日例外（仅滴滴行程单/发票）：城市同为驻地无法区分「本地日常
+                // 打车」与「出发/返回日去回车站机场的接驳」——后者只会发生在行程
+                // 首日或末日。驻地滴滴日期命中某行程的出发日/返回日 → 归该行程；
+                // 其余驻地滴滴仍归本地。餐饮/通信/其他无接驳语义，不适用本例外。
+                if non.billType == .didiTrip || non.billType == .didiInvoice {
+                    let pool = fullDatePool(non)
+                    if let idx = groups.indices.first(where: {
+                        pool.contains(groupFirst[$0]) || pool.contains(groupLast[$0])
+                    }) {
+                        var b = non
+                        b.targetSubdir = groups[idx].dirname
+                        groups[idx].bills.append(b)
+                        continue
+                    }
+                }
+                var b = non
+                b.targetSubdir = "本地"
+                local.append(b)
+                continue
+            }
             let pool = fullDatePool(non)
             guard let firstDate = pool.min(), let lastDate = pool.max() else {
                 local.append(non)
@@ -191,6 +231,43 @@ enum TripResolver {
         for var u in undatedAnchors {
             u.targetSubdir = "本地"
             local.append(u)
+        }
+
+        // 手动归类（groupOverride）：把票据从自动容器移到用户指定的行程/「本地」，
+        // 压过自动归属（含驻地优先）。目标行程不存在时（补件改变了行程首尾日期、
+        // dirname 随之变化）保留自动归属且不清除 override——目标行程恢复同名时
+        // 仍可生效，用户也可随时「恢复自动归类」。
+        let existingDirnames = Set(groups.map { $0.dirname })
+        func overrideTarget(of bill: BillInfo, current: String) -> String? {
+            guard let o = bill.groupOverride, o != current else { return nil }
+            return (o == "本地" || existingDirnames.contains(o)) ? o : nil
+        }
+        var movedAside: [(BillInfo, String)] = []
+        for gi in groups.indices {
+            let current = groups[gi].dirname
+            groups[gi].bills = groups[gi].bills.filter { b in
+                if let t = overrideTarget(of: b, current: current) {
+                    movedAside.append((b, t))
+                    return false
+                }
+                return true
+            }
+        }
+        local = local.filter { b in
+            if let t = overrideTarget(of: b, current: "本地") {
+                movedAside.append((b, t))
+                return false
+            }
+            return true
+        }
+        for (bill, target) in movedAside {
+            if target == "本地" {
+                var b = bill
+                b.targetSubdir = "本地"
+                local.append(b)
+            } else if let gi = groups.firstIndex(where: { $0.dirname == target }) {
+                groups[gi].bills.append(bill)
+            }
         }
 
         // 重新刷一遍所有 bill.targetSubdir（merged 后 dirname 可能变）
@@ -239,8 +316,16 @@ enum TripResolver {
         return abs(cal.dateComponents([.day], from: da, to: db).day ?? Int.max)
     }
 
+    /// 城市名规范化：去空白、转小写、去掉一个尾随「市」（重庆市→重庆）。
+    /// 按地名标签比对，不做行政隶属推断：万州与重庆不相等，各自独立。
+    static func normalizeCity(_ city: String) -> String {
+        var s = city.trimmingCharacters(in: .whitespaces).lowercased()
+        if s.hasSuffix("市") { s = String(s.dropLast()) }
+        return s
+    }
+
     private static func isHomeCity(_ city: String, in home: Set<String>) -> Bool {
-        home.contains(city.trimmingCharacters(in: .whitespaces).lowercased())
+        home.contains(normalizeCity(city))
     }
 
     /// YYYY-MM-DD[THH:mm:ss] → MMDD

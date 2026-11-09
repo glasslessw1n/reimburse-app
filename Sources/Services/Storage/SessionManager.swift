@@ -622,6 +622,23 @@ final class SessionManager {
         }
     }
 
+    /// 手动归类（整理页右键「移动到」）：把票据固定到指定行程目录或「本地」，
+    /// 重新整理并保存。override 落在 manifest 的票据上，后续补件/重新整理
+    /// 都会保留（TripResolver 在自动归属后应用）；目标行程因日期变化改名时
+    /// override 暂不生效，票据回到自动归属（见 TripResolver 注释）。
+    func moveBill(uid: String, to target: String, homeCities: Set<String>) {
+        guard let idx = manifest.bills.firstIndex(where: { $0.uid == uid }) else { return }
+        manifest.bills[idx].groupOverride = target
+        finalize(homeCities: homeCities)
+    }
+
+    /// 取消手动归类，恢复自动归属
+    func clearGroupOverride(uid: String, homeCities: Set<String>) {
+        guard let idx = manifest.bills.firstIndex(where: { $0.uid == uid }) else { return }
+        manifest.bills[idx].groupOverride = nil
+        finalize(homeCities: homeCities)
+    }
+
     /// 删除单张票据（按 uid）
     func removeBill(uid: String) {
         manifest.bills.removeAll { $0.uid == uid }
@@ -705,9 +722,9 @@ final class SessionManager {
 
         switch bt {
         case .trainTicket:
-            // 车次是 BillTypeFields 规格里的文件名组成（旧实现漏了，同日同线同额会撞名）
-            let trainNo = f["train_no"].flatMap { $0 } ?? ""
-            let parts = [dateMmdd, trainNo, route, fmtAmount].filter { !$0.isEmpty }
+            // 文件名不含车次（用户口径 2026-11-09）：日期 + 路线 + 金额即可；
+            // 同日同线同额撞名由 finalize 的 uniquify 追加序号解决，不靠车次区分
+            let parts = [dateMmdd, route, fmtAmount].filter { !$0.isEmpty }
             return parts.isEmpty ? "火车票\(dateMmdd)\(suf)" : parts.joined(separator: " ") + suf
 
         case .flightItinerary:

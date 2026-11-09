@@ -20,13 +20,16 @@ enum PDFRenderer {
     private static let a4Width: CGFloat = 595
     private static let a4Height: CGFloat = 842
 
-    /// 登机凭证在 A4 上的裁切区域 (x, y, width, height)，单位 pt
-    /// 基于视觉边界探测得到（"航旅纵横"电子登机凭证 A4 版式）：
-    /// - topY = 69 = 横向贯穿绿条的上界
-    /// - bottomY = 234 = "乘机凭证"下缘
-    /// - leftX = 78 / rightX = 349 = 视觉最左/最右
-    /// - x=78, y=69, width=271, height=165
-    private static let boardingPassCrop = CGRect(x: 78, y: 69, width: 271, height: 165)
+    /// 登机凭证在 A4 上的裁切区域 (x, y, width, height)，单位 pt（页面左上原点）
+    /// 按"航旅纵横"电子登机凭证 A4 版式在原始文件上逐像素实测（2026-11-09 复核）：
+    /// - 绿色横条左缘 109 / 上缘 96 / 右缘 485（绿条即裁切的左、上、右界）
+    /// - 下界 326 = 右下"乘机凭证"文字下缘（实测 319.5，留少量余量）
+    /// - x=109, y=96, width=376, height=230
+    /// 历史教训：旧值 (78, 69, 271, 165) 是在本页约 0.718 倍的缩放预览上量得，
+    /// 未换算回 pt 就写进了代码，整体缩向左上：右缘 349 把"到达地"整列裁在外面
+    /// （识别只有出发地没有到达地），下缘 234 还裁掉了条码与二维码区。
+    /// 量版式必须在原始尺寸上量，并与本常量交叉核对。
+    static let boardingPassCrop = CGRect(x: 109, y: 96, width: 376, height: 230)
 
     /// 页数（供按需逐页渲染的调用方先探规模，不必整本渲染）
     static func pageCount(pdfData: Data) -> Int {

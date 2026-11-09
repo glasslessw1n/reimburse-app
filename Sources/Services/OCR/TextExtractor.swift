@@ -88,11 +88,11 @@ enum TextExtractor {
         if PDFRenderer.needsBoardingPassCrop(pdfData: data) {
             let keywords = ["登机", "乘机", "登机牌", "BOARDING", "Boarding"]
             if keywords.contains(where: { trimmed.contains($0) }) {
-                crop = CGRect(x: 78, y: 69, width: 271, height: 165)
+                crop = PDFRenderer.boardingPassCrop
             } else if let probe = PDFRenderer.firstPageImage(pdfData: data, dpi: 120),
                       let probeText = try? await OCRService.recognize(cgImage: probe, level: .fast),
                       keywords.contains(where: { probeText.contains($0) }) {
-                crop = CGRect(x: 78, y: 69, width: 271, height: 165)
+                crop = PDFRenderer.boardingPassCrop
             }
         }
 

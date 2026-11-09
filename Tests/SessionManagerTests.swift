@@ -28,6 +28,22 @@ struct SessionManagerTests {
         #expect(SessionManager.buildFilename(for: bill) == "0910-0912 厦门住宿水单.pdf")
     }
 
+    /// 火车票文件名不含车次（用户口径）：日期 + 路线 + 金额
+    @Test func buildFilenameTrainTicketWithoutTrainNo() {
+        let bill = BillInfo(
+            billType: .trainTicket,
+            amount: 553,
+            sourceFile: "火车票.pdf",
+            fields: [
+                "departure_date": "2026-09-10",
+                "origin_city": "重庆",
+                "destination_city": "厦门",
+                "train_no": "G1833"
+            ]
+        )
+        #expect(SessionManager.buildFilename(for: bill) == "0910 重庆-厦门 553.pdf")
+    }
+
     @Test func buildFilenameDidiTripWithLetter() {
         var bill = BillInfo(billType: .didiTrip, amount: 64, sourceFile: "a.pdf", fields: ["departure_date": "2026-09-15"])
         bill.didiLetter = "A"

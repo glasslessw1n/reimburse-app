@@ -26,7 +26,7 @@ enum BillTypeFields {
             required: ["departure_date", "origin_city", "destination_city", "amount"],
             optional: ["train_no", "departure_time", "seat_type", "ticket_no", "passenger_name", "id_no_masked"],
             sortable: ["departure_date", "amount"],
-            fileNamePart: ["departure_date", "train_no", "origin_city", "destination_city", "amount"]
+            fileNamePart: ["departure_date", "origin_city", "destination_city", "amount"]
         ),
         .flightItinerary: BillFieldSpec(
             required: ["departure_date", "origin_city", "destination_city", "amount"],
@@ -93,19 +93,19 @@ enum BillTypeFields {
         ),
         .dining: BillFieldSpec(
             required: ["amount", "issue_date"],
-            optional: ["merchant_name", "category", "headcount"],
+            optional: ["merchant_name", "category", "headcount", "city"],
             sortable: ["issue_date", "amount"],
             fileNamePart: ["issue_date", "merchant_name", "amount"]
         ),
         .telecom: BillFieldSpec(
             required: ["amount", "issue_date"],
-            optional: ["carrier", "phone_no", "month"],
+            optional: ["carrier", "phone_no", "month", "city"],
             sortable: ["issue_date", "amount"],
             fileNamePart: ["month", "carrier", "amount"]
         ),
         .other: BillFieldSpec(
             required: [],
-            optional: ["amount", "issue_date", "merchant_name", "invoice_form"],
+            optional: ["amount", "issue_date", "merchant_name", "invoice_form", "city"],
             sortable: [],
             fileNamePart: ["issue_date", "amount"]
         ),
