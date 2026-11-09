@@ -126,7 +126,7 @@ public class ToolkitMergeTests
         Assert.Equal(2, ByRule("hotel-invoice-1x2"));       // 同张发票上下两份
         Assert.Equal(1, ByRule("didi-form-full"));
         Assert.Equal(1, ByRule("didi-invoice-full"));
-        Assert.Equal(1, ByRule("dining-2x2"));
+        Assert.Equal(1, ByRule("dining-full"));   // 餐饮 1 张：发票类分档左转整页（2026-11-09）
         Assert.Equal(10, result.Placements.Count);
 
         // P1 两张都在第 1 页；登机牌没有重复进网格
@@ -178,17 +178,46 @@ public class ToolkitMergeTests
                 new() { ["issue_date"] = "2026-09-13" });
             x.AddRaw(BillType.DidiInvoice, 92.0, "dinv2.pdf", MakeTopContentPdfBytes(),
                 new() { ["issue_date"] = "2026-09-13" });
+            // 2026-11-09 分档后 2 张发票走 1×2 不旋转，≥3 张才进 2×2；用 3 张继续守护
+            // 本测试的内容边框填充回归（守护对象是单元格填充，不是张数）
+            x.AddRaw(BillType.DidiInvoice, 78.0, "dinv3.pdf", MakeTopContentPdfBytes(),
+                new() { ["issue_date"] = "2026-09-13" });
         });
         var result = PdfComposer.Compose(f.Session, Path.Combine(f.Root, "out.pdf"));
         var cells = result.Placements.Where(p => p.Rule == "didi-invoice-2x2").ToList();
-        Assert.Equal(2, cells.Count);
+        Assert.Equal(3, cells.Count);
         Assert.Equal(cells[0].OutputPage, cells[1].OutputPage);
+        Assert.Equal(cells[0].OutputPage, cells[2].OutputPage);
         Assert.All(cells, p =>
         {
             Assert.Equal(-90, p.Rotation);
             Assert.InRange(p.Width, 265.0, 274.0);   // 单元格宽 273.64：内容应基本占满
             Assert.InRange(p.Height, 360.0, 397.0);  // 整页 fit 时仅约 192
         });
+    }
+
+    [Fact]
+    public void ComposeTwoDidiInvoicesUpright1x2()
+    {
+        // 2026-11-09 发票类分档：某类恰好 2 张 → 不旋转 1×2 上下同页（此前 2 张也左旋进 2×2）
+        using var f = new Fixture().Build(x =>
+        {
+            x.Add(BillType.BoardingPass, 800, "bp1.pdf", 1, new()
+            {
+                ["departure_date"] = "2026-09-10", ["origin_city"] = "重庆", ["destination_city"] = "厦门",
+            });
+            x.Add(BillType.BoardingPass, 820, "bp2.pdf", 1, new()
+            {
+                ["departure_date"] = "2026-09-12", ["origin_city"] = "厦门", ["destination_city"] = "重庆",
+            });
+            x.Add(BillType.DidiInvoice, 85.5, "dinv1.pdf", 1, new() { ["issue_date"] = "2026-09-13" });
+            x.Add(BillType.DidiInvoice, 92.0, "dinv2.pdf", 1, new() { ["issue_date"] = "2026-09-13" });
+        });
+        var result = PdfComposer.Compose(f.Session, Path.Combine(f.Root, "out.pdf"));
+        var cells = result.Placements.Where(p => p.Rule == "didi-invoice-1x2").ToList();
+        Assert.Equal(2, cells.Count);
+        Assert.Equal(cells[0].OutputPage, cells[1].OutputPage);
+        Assert.All(cells, p => Assert.Equal(0, p.Rotation));
     }
 
     [Fact]

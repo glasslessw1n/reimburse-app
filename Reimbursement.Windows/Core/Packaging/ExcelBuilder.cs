@@ -7,8 +7,10 @@ using Reimbursement.Core.Trips;
 namespace Reimbursement.Core.Packaging;
 
 /// <summary>
-/// 手写生成 xlsx 报销明细（不依赖第三方库）。对应 Swift ExcelBuilder 的 1:1 移植，
-/// 输出格式对应 Python core/legacy_excel/gen_excel.py（5 列 + 行程/本地分组）。
+/// 手写生成 xlsx 报销明细（不依赖第三方库）。对应 Swift ExcelBuilder 的 1:1 移植。
+/// 版式以用户 2026-11-09 提供的目标样例（0910-1026.xlsx）为准（与 mac 版同版）：
+/// 5 列、行程/本地分段、每段固定骨架（铁路交通标签 + 交通小计、酒店小计、滴滴
+/// 汇总行）、日期 MM/DD、备注列写整理后的目标文件名、总计行带分类整数明细。
 ///
 /// 与 Swift 版的 API 差异：Swift 的 build(bills:homeCities:outputURL:) 把 XML 写到临时目录后
 /// 调用 /usr/bin/zip 打包到目标路径；此处改为进程内用 System.IO.Compression.ZipArchive 组装，
@@ -126,7 +128,7 @@ private const string StylesXml = """
 </border>
 </borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="8">
+<cellXfs count="12">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
 <xf numFmtId="0" fontId="1" fillId="5" borderId="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
 <xf numFmtId="0" fontId="2" fillId="2" borderId="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
@@ -135,6 +137,10 @@ private const string StylesXml = """
 <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
 <xf numFmtId="0" fontId="4" fillId="0" borderId="1" applyAlignment="1"><alignment vertical="center"/></xf>
 <xf numFmtId="0" fontId="2" fillId="4" borderId="1" applyAlignment="1"><alignment vertical="center"/></xf>
+<xf numFmtId="0" fontId="3" fillId="5" borderId="1" applyAlignment="1"><alignment vertical="center"/></xf>
+<xf numFmtId="0" fontId="4" fillId="4" borderId="1" applyAlignment="1"><alignment vertical="center"/></xf>
+<xf numFmtId="4" fontId="4" fillId="3" borderId="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+<xf numFmtId="0" fontId="4" fillId="3" borderId="1" applyAlignment="1"><alignment vertical="center"/></xf>
 </cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 <numFmts count="1">
@@ -155,6 +161,7 @@ var totalsByCategory = new Dictionary<string, double>
 };
 
 var rowsXML = new List<string>();
+var merges = new List<string>();
 // 表头
 rowsXML.Add(MakeRow(1, new[]
 {
@@ -168,31 +175,58 @@ var rowIdx = 2;
 
 foreach (var trip in trips)
 {
-rowIdx = RenderTrip(trip, rowIdx, rowsXML, totalsByCategory);
+rowIdx = RenderTrip(trip, rowIdx, rowsXML, merges, totalsByCategory);
 }
 if (localBills.Count > 0)
 {
-rowIdx = RenderLocal(localBills, rowIdx, rowsXML, totalsByCategory);
+rowIdx = RenderLocal(localBills, rowIdx, rowsXML, merges, totalsByCategory);
 }
-_ = RenderGrandTotal(rowIdx, rowsXML, totalsByCategory);
+// 总计行前留一空行（样例版式）：只推进计数、不出行元素
+rowIdx += 1;
+var nextRow = RenderGrandTotal(rowIdx, rowsXML, merges, totalsByCategory);
+var lastRow = nextRow - 1;
 
 var body = string.Concat(rowsXML);
+var mergeXML = merges.Count == 0 ? "" :
+"<mergeCells count=\"" + merges.Count + "\">"
++ string.Concat(merges.Select(m => $"<mergeCell ref=\"{m}\"/>"))
++ "</mergeCells>";
 return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
 + "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
++ "<sheetViews><sheetView workbookViewId=\"0\">"
++ "<pane ySplit=\"1\" topLeftCell=\"A2\" activePane=\"bottomLeft\" state=\"frozen\"/>"
++ "<selection pane=\"bottomLeft\" activeCell=\"A2\" sqref=\"A2\"/>"
++ "</sheetView></sheetViews>"
++ "<cols>"
++ "<col min=\"1\" max=\"1\" width=\"14\" customWidth=\"1\"/>"
++ "<col min=\"2\" max=\"2\" width=\"18\" customWidth=\"1\"/>"
++ "<col min=\"3\" max=\"3\" width=\"12\" customWidth=\"1\"/>"
++ "<col min=\"4\" max=\"4\" width=\"30\" customWidth=\"1\"/>"
++ "<col min=\"5\" max=\"5\" width=\"24\" customWidth=\"1\"/>"
++ "</cols>"
 + "<sheetData>" + body + "</sheetData>"
++ $"<autoFilter ref=\"A1:E{lastRow}\"/>"
++ mergeXML
 + "<pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\" footer=\"0.3\"/>"
++ "<pageSetup orientation=\"landscape\"/>"
 + "</worksheet>";
 }
 
 // MARK: - 行/单元格构建
 
-/// <summary>生成 &lt;row r="idx"&gt;cells&lt;/row&gt;；cells 为 (列字母, 值, style)，值均为字符串（inlineStr）。</summary>
-private static string MakeRow(int idx, IReadOnlyList<(string Col, string Value, int Style)> cells)
+/// <summary>
+/// 生成 &lt;row r="idx"&gt;cells&lt;/row&gt;；cells 为 (列字母, 值, style)，值均为字符串（inlineStr）。
+/// amountC 非 null 时，C 列改写数值单元格（可被 Excel 求和，与样例一致）。
+/// </summary>
+private static string MakeRow(int idx, IReadOnlyList<(string Col, string Value, int Style)> cells, double? amountC = null)
 {
 var sb = new StringBuilder();
 sb.Append("<row r=\"").Append(idx).Append("\">");
 foreach (var (col, value, style) in cells)
 {
+if (col == "C" && amountC is { } amount)
+sb.Append(MakeNumberCell($"{col}{idx}", amount, style));
+else
 sb.Append(MakeInlineStringCell($"{col}{idx}", value, style));
 }
 sb.Append("</row>");
@@ -216,6 +250,63 @@ return $"<row r=\"{idx}\"><c r=\"A{idx}\" s=\"{style}\" t=\"inlineStr\"><is><t>{
 
 private static string FmtNumber(double v) => v.ToString("F2", CultureInfo.InvariantCulture);
 
+/// <summary>千分位 + 两位小数（合计/总计的金额文本用，如 1,703.50）。</summary>
+private static string FmtMoney(double v) => GroupThousands(FmtNumber(v));
+
+/// <summary>四舍五入到整数 + 千分位（总计行分类明细用，如 1,999）。</summary>
+private static string FmtIntGrouped(double v) =>
+GroupThousands(((long)Math.Round(v)).ToString(CultureInfo.InvariantCulture));
+
+private static string GroupThousands(string s)
+{
+var intPart = s;
+var frac = "";
+var dot = s.IndexOf('.');
+if (dot >= 0)
+{
+intPart = s[..dot];
+frac = s[dot..];
+}
+var sb = new StringBuilder();
+for (var i = 0; i < intPart.Length; i++)
+{
+if (i > 0 && (intPart.Length - i) % 3 == 0) sb.Append(',');
+sb.Append(intPart[i]);
+}
+return sb.ToString() + frac;
+}
+
+/// <summary>MMDD → MM/DD（样例的日期写法）。</summary>
+private static string SlashMMDD(string mmdd) =>
+mmdd.Length == 4 ? $"{mmdd[..2]}/{mmdd[2..]}" : mmdd;
+
+/// <summary>票据首日期（MM/DD 形式）。</summary>
+private static string FirstSlash(BillInfo b) => SlashMMDD(FirstMMDD(b));
+
+/// <summary>备注列文件名：优先整理后的目标文件名（与 ZIP 包内一致），未整理时回退原文件名。</summary>
+private static string NoteName(BillInfo b) =>
+b.TargetFilename.Length > 0 ? b.TargetFilename : b.SourceFile;
+
+/// <summary>通信费月份标签：month 字段（YYYY-MM）→「10月」；缺失时用日期月份。</summary>
+private static string TelecomMonth(BillInfo b)
+{
+if (b.F("month") is { Length: >= 7 } m)
+return $"{int.Parse(m.Substring(5, 2))}月";
+var s = b.DateRange.Start;
+if (s.Length >= 7)
+return $"{int.Parse(s.Substring(5, 2))}月";
+return "";
+}
+
+/// <summary>小计行（样例版式：只有 B 标签 + C 金额两格，A/D/E 不出单元格）。</summary>
+private static string SubtotalRow(int idx, string label, double amount) =>
+$"<row r=\"{idx}\">"
++ MakeInlineStringCell($"B{idx}", label, 11)
++ (amount > 0
+? MakeNumberCell($"C{idx}", amount, 10)
+: MakeInlineStringCell($"C{idx}", "-", 3))
++ "</row>";
+
 private static void AddTotal(Dictionary<string, double> totals, string key, double delta)
 {
 totals.TryGetValue(key, out var cur);
@@ -228,12 +319,14 @@ private static int RenderTrip(
 TripGroup trip,
 int startRow,
 List<string> rows,
+List<string> merges,
 Dictionary<string, double> totals)
 {
 var rowIdx = startRow;
 
-// 行程标题
+// 行程标题（A:E 合并）
 rows.Add(MakeMergedRow(rowIdx, $"【{trip.Dirname}】", 2));
+merges.Add($"A{rowIdx}:E{rowIdx}");
 rowIdx += 1;
 
 // 分类
@@ -263,7 +356,7 @@ rows.Add(MakeRow(rowIdx, new[]
 ("B", "-", 5),
 ("C", "-", 5),
 ("D", route, 0),
-("E", b.SourceFile, 0)
+("E", NoteName(b), 0)
 }));
 rowIdx += 1;
 }
@@ -271,7 +364,7 @@ var sub = 0.0;
 foreach (var b in gas)
 {
 var cat = b.BillType == BillType.TollInvoice? "通行费": "加油费";
-var date = FirstMMDD(b);
+var date = FirstSlash(b);
 if (b.Amount > 0) { sub += b.Amount; tripTotal += b.Amount;}
 rows.Add(MakeRow(rowIdx, new[]
 {
@@ -279,42 +372,28 @@ rows.Add(MakeRow(rowIdx, new[]
 ("B", date, 5),
 ("C", FmtNumber(b.Amount), 4),
 ("D", "", 0),
-("E", b.SourceFile, 0)
-}));
+("E", NoteName(b), 0)
+}, amountC: b.Amount));
 rowIdx += 1;
 }
-// 拼小计行（C 列用 number cell）：手拼避免 cells 限制
-var subRow = $"<row r=\"{rowIdx}\">"
-+ MakeInlineStringCell($"A{rowIdx}", "", 0)
-+ MakeInlineStringCell($"B{rowIdx}", "自驾车小计", 6)
-+ (sub > 0
-? MakeNumberCell($"C{rowIdx}", sub, 3)
-: MakeInlineStringCell($"C{rowIdx}", "-", 3))
-+ MakeInlineStringCell($"D{rowIdx}", "", 0)
-+ MakeInlineStringCell($"E{rowIdx}", "", 0)
-+ "</row>";
-rows.Add(subRow);
+rows.Add(SubtotalRow(rowIdx, "自驾车小计", sub));
 rowIdx += 1;
 AddTotal(totals, "自驾车", sub);
 }
 
-// 1. 交通
-if (transport.Count > 0)
-{
-rows.Add(MakeRow(rowIdx, new[]
-{
-("A", "铁路交通", 6), ("B", "", 0), ("C", "", 0), ("D", "", 0), ("E", "", 0)
-}));
+// 1. 交通（固定骨架：标签行 + 票据行 + 小计，无票据时也出小计「-」）
+//    标签行只有 A 一格；类别名：登机牌 / 火车/机票（火车票与机票行程单同名）
+rows.Add($"<row r=\"{rowIdx}\">"
++ MakeInlineStringCell($"A{rowIdx}", "铁路交通", 6)
++ "</row>");
 rowIdx += 1;
-var sub = 0.0;
+var transportSub = 0.0;
 foreach (var b in transport)
 {
-var date = FirstMMDD(b);
-var cat = b.BillType == BillType.BoardingPass? "登机牌":
-b.BillType == BillType.FlightItinerary? "机票": "火车";
-var route = b.BillType == BillType.BoardingPass? "": $"{b.FromCity}-{b.ToCity}";
-if (b.Amount > 0) { sub += b.Amount; tripTotal += b.Amount;}
-// 金额列单独处理
+var date = FirstSlash(b);
+var cat = b.BillType == BillType.BoardingPass? "登机牌": "火车/机票";
+var route = b.FromCity.Length == 0 || b.ToCity.Length == 0? "": $"{b.FromCity}-{b.ToCity}";
+if (b.Amount > 0) { transportSub += b.Amount; tripTotal += b.Amount;}
 var row = $"<row r=\"{rowIdx}\">"
 + MakeInlineStringCell($"A{rowIdx}", cat, 0)
 + MakeInlineStringCell($"B{rowIdx}", date, 5)
@@ -322,30 +401,20 @@ var row = $"<row r=\"{rowIdx}\">"
 ? MakeNumberCell($"C{rowIdx}", b.Amount, 4)
 : MakeInlineStringCell($"C{rowIdx}", "-", 5))
 + MakeInlineStringCell($"D{rowIdx}", route, 0)
-+ MakeInlineStringCell($"E{rowIdx}", b.SourceFile, 0)
++ MakeInlineStringCell($"E{rowIdx}", NoteName(b), 0)
 + "</row>";
 rows.Add(row);
 rowIdx += 1;
 }
-// 交通小计
-var subRow = $"<row r=\"{rowIdx}\">"
-+ MakeInlineStringCell($"A{rowIdx}", "", 0)
-+ MakeInlineStringCell($"B{rowIdx}", "交通小计", 6)
-+ (sub > 0
-? MakeNumberCell($"C{rowIdx}", sub, 3)
-: MakeInlineStringCell($"C{rowIdx}", "-", 3))
-+ MakeInlineStringCell($"D{rowIdx}", "", 0)
-+ MakeInlineStringCell($"E{rowIdx}", "", 0)
-+ "</row>";
-rows.Add(subRow);
+rows.Add(SubtotalRow(rowIdx, "交通小计", transportSub));
 rowIdx += 1;
-AddTotal(totals, "交通", sub);
-}
+AddTotal(totals, "交通", transportSub);
 
-// 2. 酒店（水单+发票按金额配对，同一住宿只计一次，避免重复入表）
+// 2. 酒店（水单+发票按金额配对，同一住宿只计一次，避免重复入表。
+//    小计行固定骨架：无住宿也出「-」）
+var hotelSub = 0.0;
 if (hotelFolios.Count > 0 || hotelInvoices.Count > 0)
 {
-var sub = 0.0;
 var usedInvoices = new HashSet<int>();
 
 foreach (var folio in hotelFolios)
@@ -363,7 +432,7 @@ var hasInvoice = matchedIdx!= null;
 if (matchedIdx is {} mi) usedInvoices.Add(mi);
 var range = HotelDateRange(folio);
 var city = folio.F("city")?? folio.F("hotel_name")?? "";
-if (folio.Amount > 0) { sub += folio.Amount; tripTotal += folio.Amount;}
+if (folio.Amount > 0) { hotelSub += folio.Amount; tripTotal += folio.Amount;}
 rows.Add(HotelRow(range, city, folio.Amount, hasInvoice, rowIdx));
 rowIdx += 1;
 }
@@ -373,27 +442,18 @@ if (usedInvoices.Contains(i)) continue;
 var inv = hotelInvoices[i];
 var range = HotelDateRange(inv);
 var city = inv.F("city")?? inv.F("hotel_name")?? "";
-if (inv.Amount > 0) { sub += inv.Amount; tripTotal += inv.Amount;}
+if (inv.Amount > 0) { hotelSub += inv.Amount; tripTotal += inv.Amount;}
 rows.Add(HotelRow(range, city, inv.Amount, hasInvoice: true, rowIdx));
 rowIdx += 1;
 }
 
-var subRow = $"<row r=\"{rowIdx}\">"
-+ MakeInlineStringCell($"A{rowIdx}", "", 0)
-+ MakeInlineStringCell($"B{rowIdx}", "酒店小计", 6)
-+ (sub > 0
-? MakeNumberCell($"C{rowIdx}", sub, 3)
-: MakeInlineStringCell($"C{rowIdx}", "-", 3))
-+ MakeInlineStringCell($"D{rowIdx}", "", 0)
-+ MakeInlineStringCell($"E{rowIdx}", "", 0)
-+ "</row>";
-rows.Add(subRow);
-rowIdx += 1;
-AddTotal(totals, "酒店", sub);
 }
+rows.Add(SubtotalRow(rowIdx, "酒店小计", hotelSub));
+rowIdx += 1;
+AddTotal(totals, "酒店", hotelSub);
 
-// 3. 滴滴：发票金额计入；无发票覆盖的行程单金额也计入，避免静默漏钱
-if (didiTrip.Count > 0 || didiInvoice.Count > 0)
+// 3. 滴滴（固定骨架：每段一行汇总，无滴滴时也出「共0段行程 / ?」占位，与样例一致）：
+//    发票金额计入；无发票覆盖的行程单金额也计入，避免静默漏钱
 {
 var didiTotal = 0.0;
 var coveredTrips = new HashSet<int>();
@@ -420,7 +480,7 @@ tripTotal += didiTrip[ti].Amount;
 }
 }
 var lastArrival = transport.Count > 0? transport[^1].ToCity: "";
-var lastDate = transport.Count > 0? FirstMMDD(transport[^1]): "";
+var lastDate = SlashMMDD(trip.LastMMDD);
 var arrivalText = lastArrival.Length == 0? "": $"返回{lastArrival}: {lastDate}";
 var summaryText = $"行程单{didiTrip.Count}份, 发票{didiInvoice.Count}份";
 var periodText = $"共{didiTrip.Count}段行程";
@@ -445,7 +505,7 @@ var sub = 0.0;
 var sorted = dining.OrderBy(b => FirstMMDD(b), StringComparer.Ordinal).ToList();
 foreach (var b in sorted)
 {
-var date = FirstMMDD(b);
+var date = FirstSlash(b);
 if (b.Amount > 0) { sub += b.Amount; tripTotal += b.Amount;}
 rows.Add(MakeRow(rowIdx, new[]
 {
@@ -453,8 +513,8 @@ rows.Add(MakeRow(rowIdx, new[]
 ("B", date, 5),
 ("C", FmtNumber(b.Amount), 4),
 ("D", "", 0),
-("E", b.SourceFile, 0)
-}));
+("E", NoteName(b), 0)
+}, amountC: b.Amount));
 rowIdx += 1;
 }
 AddTotal(totals, "餐饮", sub);
@@ -475,11 +535,12 @@ rowIdx += 1;
 AddTotal(totals, "其他", sub);
 }
 
-// 行程合计
+// 行程合计（A:E 合并）
 var grandText = tripTotal > 0
-? $"本段合计: ¥{FmtNumber(tripTotal)}"
+? $"本段合计: ¥{FmtMoney(tripTotal)}"
 : "本段合计: -";
-rows.Add(MakeMergedRow(rowIdx, grandText, 7));
+rows.Add(MakeMergedRow(rowIdx, grandText, 9));
+merges.Add($"A{rowIdx}:E{rowIdx}");
 rowIdx += 1;
 
 return rowIdx;
@@ -491,11 +552,15 @@ private static int RenderLocal(
 IReadOnlyList<BillInfo> localBills,
 int startRow,
 List<string> rows,
+List<string> merges,
 Dictionary<string, double> totals)
 {
 var rowIdx = startRow;
 
 rows.Add(MakeMergedRow(rowIdx, "【本地费用】", 2));
+merges.Add($"A{rowIdx}:E{rowIdx}");
+rowIdx += 1;
+// 段标题后留一空行（样例版式）
 rowIdx += 1;
 
 var telecom = localBills.Where(b => b.BillType == BillType.Telecom).ToList();
@@ -505,32 +570,24 @@ var dining = localBills.Where(b => b.BillType == BillType.Dining).ToList();
 var vat = localBills.Where(b => b.BillType == BillType.HotelInvoice).ToList();
 var localTotal = 0.0;
 
-// 通信
+// 通信（B 列是月份标签「10月」，不是日期）
 if (telecom.Count > 0)
 {
 var sub = 0.0;
 foreach (var b in telecom)
 {
-var month = FirstMMDD(b);
 if (b.Amount > 0) { sub += b.Amount;}
 rows.Add(MakeRow(rowIdx, new[]
 {
 ("A", "通信费", 0),
-("B", month, 5),
+("B", TelecomMonth(b), 5),
 ("C", FmtNumber(b.Amount), 4),
 ("D", "", 0),
-("E", b.SourceFile, 0)
-}));
+("E", NoteName(b), 0)
+}, amountC: b.Amount));
 rowIdx += 1;
 }
-rows.Add(MakeRow(rowIdx, new[]
-{
-("A", "", 0),
-("B", "通信小计", 6),
-("C", FmtNumber(sub), 4),
-("D", "", 0),
-("E", "", 0)
-}));
+rows.Add(SubtotalRow(rowIdx, "通信小计", sub));
 rowIdx += 1;
 AddTotal(totals, "通信", sub);
 localTotal += sub;
@@ -571,7 +628,7 @@ rows.Add(MakeRow(rowIdx, new[]
 ("C", FmtNumber(didiTotal), 4),
 ("D", "", 0),
 ("E", "", 0)
-}));
+}, amountC: didiTotal));
 rowIdx += 1;
 AddTotal(totals, "滴滴", didiTotal);
 localTotal += didiTotal;
@@ -585,7 +642,7 @@ var sub = 0.0;
 var sorted = dining.OrderBy(b => FirstMMDD(b), StringComparer.Ordinal).ToList();
 foreach (var b in sorted)
 {
-var date = FirstMMDD(b);
+var date = FirstSlash(b);
 if (b.Amount > 0) { sub += b.Amount;}
 rows.Add(MakeRow(rowIdx, new[]
 {
@@ -593,8 +650,8 @@ rows.Add(MakeRow(rowIdx, new[]
 ("B", date, 5),
 ("C", FmtNumber(b.Amount), 4),
 ("D", "", 0),
-("E", b.SourceFile, 0)
-}));
+("E", NoteName(b), 0)
+}, amountC: b.Amount));
 rowIdx += 1;
 }
 AddTotal(totals, "餐饮", sub);
@@ -608,7 +665,7 @@ var sub = 0.0;
 var sorted = vat.OrderBy(b => FirstMMDD(b), StringComparer.Ordinal).ToList();
 foreach (var b in sorted)
 {
-var date = FirstMMDD(b);
+var date = FirstSlash(b);
 if (b.Amount > 0) { sub += b.Amount;}
 rows.Add(MakeRow(rowIdx, new[]
 {
@@ -616,8 +673,8 @@ rows.Add(MakeRow(rowIdx, new[]
 ("B", date, 5),
 ("C", FmtNumber(b.Amount), 4),
 ("D", b.F("seller_name")?? "", 0),
-("E", b.SourceFile, 0)
-}));
+("E", NoteName(b), 0)
+}, amountC: b.Amount));
 rowIdx += 1;
 }
 AddTotal(totals, "其他", sub);
@@ -640,11 +697,12 @@ AddTotal(totals, "其他", sub);
 localTotal += sub;
 }
 
-// 本地合计
+// 本地合计（A:E 合并）
 var localText = localTotal > 0
-? $"本地合计: ¥{FmtNumber(localTotal)}"
+? $"本地合计: ¥{FmtMoney(localTotal)}"
 : "本地合计: -";
-rows.Add(MakeMergedRow(rowIdx, localText, 7));
+rows.Add(MakeMergedRow(rowIdx, localText, 9));
+merges.Add($"A{rowIdx}:E{rowIdx}");
 rowIdx += 1;
 
 return rowIdx;
@@ -655,21 +713,26 @@ return rowIdx;
 private static int RenderGrandTotal(
 int startRow,
 List<string> rows,
+List<string> merges,
 Dictionary<string, double> totals)
 {
 double Get(string key) => totals.TryGetValue(key, out var v)? v: 0;
 
 var grandTotal = totals.Values.Sum();
-// 分类明细的空格数与 Swift 版逐字一致（段间两个空格，分类数字被 Int 截断——既有行为，照录）
-var detail = "";
-if (Get("自驾车") > 0) { detail += $"自驾车:{(int)Get("自驾车")}  "; }
-detail += $"交通:{(int)Get("交通")}  酒店:{(int)Get("酒店")}  滴滴:{(int)Get("滴滴")}";
-if (Get("餐饮") > 0) { detail += $"  餐饮:{(int)Get("餐饮")}"; }
-if (Get("通信") > 0) { detail += $"  通信:{(int)Get("通信")}"; }
-if (Get("其他") > 0) { detail += $"  其他:{(int)Get("其他")}"; }
+// 样例格式：分类明细取整数（四舍五入、千分位），如 (交通:1,999  酒店:7,109  …)；
+// 与总计的两位小数相加可能差 ±几元，是样例既有口径（与 mac 版一致）
+var parts = new List<string>();
+if (Get("自驾车") > 0) { parts.Add($"自驾车:{FmtIntGrouped(Get("自驾车"))}"); }
+parts.Add($"交通:{FmtIntGrouped(Get("交通"))}");
+parts.Add($"酒店:{FmtIntGrouped(Get("酒店"))}");
+parts.Add($"滴滴:{FmtIntGrouped(Get("滴滴"))}");
+if (Get("餐饮") > 0) { parts.Add($"餐饮:{FmtIntGrouped(Get("餐饮"))}"); }
+if (Get("通信") > 0) { parts.Add($"通信:{FmtIntGrouped(Get("通信"))}"); }
+if (Get("其他") > 0) { parts.Add($"其他:{FmtIntGrouped(Get("其他"))}"); }
 
-var text = $"报销总计: ¥{FmtNumber(grandTotal)} ({detail})";
-rows.Add(MakeMergedRow(startRow, text, 7));
+var text = $"报销总计: ¥{FmtMoney(grandTotal)}  ({string.Join("  ", parts)})";
+rows.Add(MakeMergedRow(startRow, text, 8));
+merges.Add($"A{startRow}:E{startRow}");
 return startRow + 1;
 }
 
@@ -700,7 +763,8 @@ var e = b.DateRange.End;
 if (s.Length == 0) return "";
 var mmddS = MmddTail(s);
 var mmddE = e.Length == 0? mmddS: MmddTail(e);
-return mmddS == mmddE? mmddS: $"{mmddS}-{mmddE}";
+// 样例写法：09/10-09/12
+return mmddS == mmddE? SlashMMDD(mmddS): $"{SlashMMDD(mmddS)}-{SlashMMDD(mmddE)}";
 }
 
 /// <summary>取日期串末 5 字符（MM-dd）并去掉 "-"，对应 Swift suffix(5) + replacingOccurrences。</summary>
@@ -729,11 +793,11 @@ or BillType.Dining or BillType.HotelInvoice => true,
 _ => false,
 };
 
-/// <summary>兜底行：类型名 + 日期 + 金额 + 销方/商户名 + 原文件名。</summary>
+/// <summary>兜底行：类型名 + 日期 + 金额 + 销方/商户名 + 目标文件名。</summary>
 private static string GenericRow(BillInfo b, int rowIdx)
 {
 var cat = b.BillType.DisplayName();
-var date = FirstMMDD(b);
+var date = FirstSlash(b);
 var seller = b.F("seller_name")?? b.F("merchant_name")?? b.F("hotel_name")?? "";
 return $"<row r=\"{rowIdx}\">"
 + MakeInlineStringCell($"A{rowIdx}", cat, 0)
@@ -742,7 +806,7 @@ return $"<row r=\"{rowIdx}\">"
 ? MakeNumberCell($"C{rowIdx}", b.Amount, 4)
 : MakeInlineStringCell($"C{rowIdx}", "-", 5))
 + MakeInlineStringCell($"D{rowIdx}", seller, 0)
-+ MakeInlineStringCell($"E{rowIdx}", b.SourceFile, 0)
++ MakeInlineStringCell($"E{rowIdx}", NoteName(b), 0)
 + "</row>";
 }
 

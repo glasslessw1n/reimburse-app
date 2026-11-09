@@ -275,4 +275,161 @@ public class TripResolverTests
         Assert.Equal(5, TripResolver.FullDateDiff("2026-01-03", "2025-12-29"));
         Assert.Equal(0, TripResolver.FullDateDiff("2026-01-01", "2026-01-01"));
     }
+
+    // MARK: - 驻地优先归属 + 边界日例外 + 手动归类（2026-11-09，与 mac 版同口径）
+
+    private static BillInfo[] WanzhouAnchors() => new[]
+    {
+        Anchor(BillType.TrainTicket, from: "重庆", to: "万州", date: "2026-10-20", amount: 100),
+        Anchor(BillType.TrainTicket, from: "万州", to: "重庆", date: "2026-10-22", amount: 100),
+    };
+
+    private static BillInfo DiningAt(string city, string date, double amount = 76) =>
+        new(BillType.Dining, amount, "dd.pdf", new Dictionary<string, string?>
+        {
+            ["issue_date"] = date,
+            ["city"] = city,
+        });
+
+    /// <summary>驻地滴滴在行程窗口内（中间日）→ 本地，不被日期吸进万州行程。</summary>
+    [Fact]
+    public void HomeDidiTripGoesLocal()
+    {
+        var bills = WanzhouAnchors().Append(
+            Anchor(BillType.DidiTrip, from: "重庆", to: "重庆", date: "2026-10-21", amount: 35)).ToArray();
+        var r = Resolve(bills);
+        Assert.Single(r.Trips);
+        Assert.Contains(r.Local, b => b.BillType == BillType.DidiTrip);
+        Assert.DoesNotContain(r.Trips[0].Bills, b => b.BillType == BillType.DidiTrip);
+    }
+
+    /// <summary>边界日例外：出发日的驻地滴滴是去车站的接驳 → 归行程。</summary>
+    [Fact]
+    public void HomeDidiOnDepartureDayJoinsTrip()
+    {
+        var bills = WanzhouAnchors().Append(
+            Anchor(BillType.DidiTrip, from: "重庆", to: "重庆", date: "2026-10-20", amount: 42)).ToArray();
+        var r = Resolve(bills);
+        Assert.Contains(r.Trips[0].Bills, b => b.BillType == BillType.DidiTrip);
+        Assert.DoesNotContain(r.Local, b => b.BillType == BillType.DidiTrip);
+    }
+
+    /// <summary>边界日例外：返回日的驻地滴滴与发票 → 归行程。</summary>
+    [Fact]
+    public void HomeDidiOnReturnDayJoinsTrip()
+    {
+        var bills = WanzhouAnchors()
+            .Append(Anchor(BillType.DidiTrip, from: "重庆", to: "重庆", date: "2026-10-22", amount: 38))
+            .Append(Anchor(BillType.DidiInvoice, from: "重庆", to: "重庆", date: "2026-10-22", amount: 38))
+            .ToArray();
+        var r = Resolve(bills);
+        Assert.Contains(r.Trips[0].Bills, b => b.BillType == BillType.DidiTrip);
+        Assert.Contains(r.Trips[0].Bills, b => b.BillType == BillType.DidiInvoice);
+    }
+
+    /// <summary>边界日例外仅限滴滴：出发日当天在驻地开具的餐饮仍归本地。</summary>
+    [Fact]
+    public void HomeDiningOnDepartureDayStaysLocal()
+    {
+        var bills = WanzhouAnchors().Append(DiningAt("重庆", "2026-10-20")).ToArray();
+        var r = Resolve(bills);
+        Assert.Contains(r.Local, b => b.SourceFile == "dd.pdf");
+    }
+
+    /// <summary>万州当地滴滴（城市为万州）→ 归万州行程；万州是独立地名，不算驻地。</summary>
+    [Fact]
+    public void AwayDidiTripStaysInTrip()
+    {
+        var bills = WanzhouAnchors().Append(
+            Anchor(BillType.DidiTrip, from: "万州", to: "万州", date: "2026-10-21", amount: 30)).ToArray();
+        var r = Resolve(bills);
+        Assert.Contains(r.Trips[0].Bills, b => b.BillType == BillType.DidiTrip);
+        Assert.DoesNotContain(r.Local, b => b.BillType == BillType.DidiTrip);
+    }
+
+    /// <summary>餐饮按开具地归属：驻地开具 → 本地。</summary>
+    [Fact]
+    public void HomeDiningGoesLocal()
+    {
+        var bills = WanzhouAnchors().Append(DiningAt("重庆", "2026-10-21")).ToArray();
+        var r = Resolve(bills);
+        Assert.Contains(r.Local, b => b.SourceFile == "dd.pdf");
+    }
+
+    /// <summary>餐饮按开具地归属：行程城市开具 → 行程内。</summary>
+    [Fact]
+    public void TripCityDiningStaysInTrip()
+    {
+        var bills = WanzhouAnchors().Append(DiningAt("万州", "2026-10-21")).ToArray();
+        var r = Resolve(bills);
+        Assert.Contains(r.Trips[0].Bills, b => b.SourceFile == "dd.pdf");
+    }
+
+    /// <summary>餐饮按开具地归属：第三地开具（窗口内）→ 按日期归行程（团队异地聚餐）。</summary>
+    [Fact]
+    public void ThirdCityDiningStaysInTrip()
+    {
+        var bills = WanzhouAnchors().Append(DiningAt("北京", "2026-10-21")).ToArray();
+        var r = Resolve(bills);
+        Assert.Contains(r.Trips[0].Bills, b => b.SourceFile == "dd.pdf");
+    }
+
+    /// <summary>无城市的餐饮回落日期归属；「重庆市」规范化为驻地。</summary>
+    [Fact]
+    public void DiningWithoutCityFallsBackToDate()
+    {
+        var bills = WanzhouAnchors().Append(
+            new BillInfo(BillType.Dining, 76, "dd.pdf", new Dictionary<string, string?>
+            {
+                ["issue_date"] = "2026-10-21",
+            })).ToArray();
+        var r = Resolve(bills);
+        Assert.Contains(r.Trips[0].Bills, b => b.SourceFile == "dd.pdf");
+    }
+
+    [Fact]
+    public void HomeCityWithShiSuffixNormalized()
+    {
+        var bills = WanzhouAnchors().Append(
+            Anchor(BillType.DidiTrip, from: "重庆市", to: "重庆市", date: "2026-10-21", amount: 35)).ToArray();
+        var r = Resolve(bills);
+        Assert.Contains(r.Local, b => b.BillType == BillType.DidiTrip);
+    }
+
+    /// <summary>手动归类：行程内的票据 override 到「本地」。</summary>
+    [Fact]
+    public void GroupOverrideMovesBillToLocal()
+    {
+        var dining = DiningAt("万州", "2026-10-21");
+        dining.GroupOverride = "本地";
+        var bills = WanzhouAnchors().Append(dining).ToArray();
+        var r = Resolve(bills);
+        Assert.Contains(r.Local, b => b.SourceFile == "dd.pdf");
+        Assert.DoesNotContain(r.Trips[0].Bills, b => b.SourceFile == "dd.pdf");
+    }
+
+    /// <summary>手动归类：本地票据 override 到指定行程（目标用行程 dirname）。</summary>
+    [Fact]
+    public void GroupOverrideMovesLocalBillToTrip()
+    {
+        var probe = Resolve(WanzhouAnchors());
+        var dirname = probe.Trips[0].Dirname;
+        var dining = DiningAt("重庆", "2026-10-21");
+        dining.GroupOverride = dirname;
+        var bills = WanzhouAnchors().Append(dining).ToArray();
+        var r = Resolve(bills);
+        Assert.Contains(r.Trips[0].Bills, b => b.SourceFile == "dd.pdf");
+        Assert.DoesNotContain(r.Local, b => b.SourceFile == "dd.pdf");
+    }
+
+    /// <summary>手动归类：目标行程不存在（已改名）→ 回落自动归属，不丢票据。</summary>
+    [Fact]
+    public void GroupOverrideToMissingTripFallsBack()
+    {
+        var dining = DiningAt("万州", "2026-10-21");
+        dining.GroupOverride = "0101-0102 不存在的行程";
+        var bills = WanzhouAnchors().Append(dining).ToArray();
+        var r = Resolve(bills);
+        Assert.Contains(r.Trips[0].Bills, b => b.SourceFile == "dd.pdf");
+    }
 }

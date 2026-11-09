@@ -11,6 +11,20 @@ public class SessionManagerTests
 {
     // MARK: - BuildFilename
 
+    /// <summary>火车票文件名不含车次（用户口径）：日期 + 路线 + 金额。</summary>
+    [Fact]
+    public void BuildFilenameTrainTicketWithoutTrainNo()
+    {
+        var bill = new BillInfo(BillType.TrainTicket, 553, "火车票.pdf", new Dictionary<string, string?>
+        {
+            ["departure_date"] = "2026-09-10",
+            ["origin_city"] = "重庆",
+            ["destination_city"] = "厦门",
+            ["train_no"] = "G1833",
+        });
+        Assert.Equal("0910 重庆-厦门 553.pdf", SessionManager.BuildFilename(bill));
+    }
+
     [Fact]
     public void BuildFilenameHotelFolio()
     {

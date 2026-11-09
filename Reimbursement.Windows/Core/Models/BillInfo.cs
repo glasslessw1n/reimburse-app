@@ -34,6 +34,11 @@ public sealed class BillInfo
     public string DidiLetter { get; set; } = "";
     /// <summary>match 后的最终目标文件名（hotel invoice 关联 folio 后可能改名）。</summary>
     public string FinalTargetName { get; set; } = "";
+    /// <summary>
+    /// 手动归类覆盖：用户在整理结果里指定的目标行程 dirname（或「本地」）。
+    /// 非 null 时 TripResolver 在自动归属之后应用；目标行程不存在时回落自动归属（不清除本字段）。
+    /// </summary>
+    public string? GroupOverride { get; set; }
 
     internal static string NewUid() => Guid.NewGuid().ToString().ToUpperInvariant();
 
@@ -139,6 +144,7 @@ public sealed class BillInfoJsonConverter : JsonConverter<BillInfo>
         b.Error = Str(root, "error") ?? "";
         b.DidiLetter = Str(root, "didi_letter") ?? "";
         b.FinalTargetName = Str(root, "_final_target_name") ?? "";
+        b.GroupOverride = Str(root, "group_override");
         return b;
     }
 
@@ -202,6 +208,7 @@ public sealed class BillInfoJsonConverter : JsonConverter<BillInfo>
         if (Len(b.Error) > 0) writer.WriteString("error", b.Error);
         if (Len(b.DidiLetter) > 0) writer.WriteString("didi_letter", b.DidiLetter);
         if (Len(b.FinalTargetName) > 0) writer.WriteString("_final_target_name", b.FinalTargetName);
+        if (Len(b.GroupOverride) > 0) writer.WriteString("group_override", b.GroupOverride);
         writer.WriteEndObject();
     }
 }

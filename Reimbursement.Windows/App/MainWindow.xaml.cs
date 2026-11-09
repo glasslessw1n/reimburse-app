@@ -36,6 +36,10 @@ public sealed class BillRow
     public bool CanDelete { get; init; }
     /// <summary>分组视图（整理后）用：走分组模板，带类别色。</summary>
     public bool IsGrouped { get; init; }
+    /// <summary>当前所在分组（行程 dirname 或「本地」；未分组为空）——右键「移动到」菜单用。</summary>
+    public string GroupName { get; init; } = "";
+    /// <summary>是否有手动归类覆盖——决定右键菜单是否出现「恢复自动归类」。</summary>
+    public bool HasGroupOverride { get; init; }
     public string TypeName { get; init; } = "";
     public string AmountText { get; init; } = "";
     public string DateCityText { get; init; } = "";
@@ -154,7 +158,7 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>由识别记录构造一行（平铺/分组共用字段，分组时 IsGrouped=true）。</summary>
-    private BillRow MakeBillRow(BillInfo b, bool grouped)
+    private BillRow MakeBillRow(BillInfo b, bool grouped, string groupName = "")
     {
         var failed = (b.Error ?? "").Length > 0;
         var status = failed ? "失败" : b.NeedsReview ? "需复核" : "已识别";
@@ -176,6 +180,8 @@ public sealed partial class MainWindow : Window
             CanRetry = true,
             CanDelete = true,
             IsGrouped = grouped,
+            GroupName = groupName,
+            HasGroupOverride = b.GroupOverride != null,
             TypeName = b.BillType.DisplayName(),
             AmountText = b.Amount > 0 ? $"¥{b.Amount:0.00}" : "¥—",
             DateCityText = DateCityLine(b),
@@ -656,14 +662,14 @@ public sealed partial class MainWindow : Window
             foreach (var b in trip.Bills) groupedUids.Add(b.Uid);
             var total = trip.Bills.Sum(b => b.Amount);
             AddGroup(trip.Uid, trip.Dirname, $"{trip.Bills.Count} 张 · ¥{total:0.00}",
-                trip.Bills.Select(b => (object)MakeBillRow(b, grouped: true)));
+                trip.Bills.Select(b => (object)MakeBillRow(b, grouped: true, trip.Dirname)));
         }
         if (_session.Manifest.Local.Count > 0)
         {
             foreach (var b in _session.Manifest.Local) groupedUids.Add(b.Uid);
             var total = _session.Manifest.Local.Sum(b => b.Amount);
             AddGroup("local", "本地票据", $"{_session.Manifest.Local.Count} 张 · ¥{total:0.00}",
-                _session.Manifest.Local.Select(b => (object)MakeBillRow(b, grouped: true)));
+                _session.Manifest.Local.Select(b => (object)MakeBillRow(b, grouped: true, "本地")));
         }
         // 安全网：整理后新增/异常导致未进任何分组的票据也要露出来，不能悄悄消失
         var ungrouped = Workflow.AllBills(_session).Where(b => !groupedUids.Contains(b.Uid)).ToList();
@@ -704,6 +710,62 @@ public sealed partial class MainWindow : Window
             RefreshDetail();
             RefreshSessions(_session.Sid);
         }
+    }
+
+    /// <summary>
+    /// 分组票据行右键菜单（整理后）：打开时按当前分组动态生成「移动到 ▸ 各行程/本地」，
+    /// 有手动归类覆盖时再加「恢复自动归类」。与 mac 版 FinalizeStep 的右键菜单同口径。
+    /// </summary>
+    private void BillContextFlyout_Opening(object sender, object e)
+    {
+        if (sender is not MenuFlyout flyout) return;
+        flyout.Items.Clear();
+        if (_session == null) return;
+        if (flyout.Target?.DataContext is not BillRow row || row.Uid.Length == 0) return;
+        var uid = row.Uid;
+
+        var move = new MenuFlyoutSubItem { Text = "移动到" };
+        foreach (var trip in _session.Manifest.Trips)
+        {
+            if (trip.Dirname == row.GroupName) continue;
+            var target = trip.Dirname;
+            var item = new MenuFlyoutItem { Text = target };
+            item.Click += (_, _) => MoveBillTo(uid, target);
+            move.Items.Add(item);
+        }
+        if (row.GroupName != "本地")
+        {
+            var item = new MenuFlyoutItem { Text = "本地" };
+            item.Click += (_, _) => MoveBillTo(uid, "本地");
+            move.Items.Add(item);
+        }
+        if (move.Items.Count > 0) flyout.Items.Add(move);
+
+        if (row.HasGroupOverride)
+        {
+            if (flyout.Items.Count > 0) flyout.Items.Add(new MenuFlyoutSeparator());
+            var clear = new MenuFlyoutItem { Text = "恢复自动归类" };
+            clear.Click += (_, _) => ClearBillOverride(uid);
+            flyout.Items.Add(clear);
+        }
+    }
+
+    private void MoveBillTo(string uid, string target)
+    {
+        if (!RequireSession()) return;
+        _session!.MoveBill(uid, target);
+        Log($"已手动归类到「{target}」");
+        RefreshDetail();
+        RefreshSessions(_session.Sid);
+    }
+
+    private void ClearBillOverride(string uid)
+    {
+        if (!RequireSession()) return;
+        _session!.ClearGroupOverride(uid);
+        Log("已恢复自动归类");
+        RefreshDetail();
+        RefreshSessions(_session.Sid);
     }
 
     // MARK: 导入（拖放 / 选择 → 自动识别）

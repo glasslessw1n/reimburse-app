@@ -21,7 +21,9 @@ public sealed record ComposeResult(string OutputPath, int PageCount,
 /// 相对 toolkit 的三处缺陷修复（有意为之）：
 /// 1. 多页文档逐页纳入（toolkit 只渲染第 0 页，多页会丢页）；
 /// 2. 未出现在 P1 的登机牌进 3×2 网格（toolkit 里单张/中间登机牌会整张消失）；
-/// 3. 行程内与本地的其他类票据（出租/通信/其他等）走 1×2 兜底排版（toolkit 直接丢弃）。
+/// 3. 行程内与本地的其他类票据（出租/通信/其他等）走发票类分档兜底排版（toolkit 直接丢弃）。
+/// 发票类分档（2026-11-09 与 mac 版对齐）：1 张左转整页、2 张不旋转 1×2、≥3 张左转 2×2，
+/// 适用滴滴发票/餐饮/通信/加油+通行费/其他兜底（见 PlaceInvoiceTiered）。
 /// 实现方式也不同：toolkit 是 144dpi 光栅图贴页，这里是矢量贴页（XForm），文字保持清晰、体积更小；
 /// 图片原件（jpg/png/bmp）按同样的 fit 规则贴图（与 toolkit 对图片的处理等效）。
 /// 与 toolkit 的一处行为差异（用户实测后要求）：旋转贴页时若源页内容只占页面一部分
@@ -326,6 +328,31 @@ public static class PdfComposer
             }
         }
 
+        /// <summary>
+        /// 发票类分档排版（与 mac 版同口径，2026-11-09 修订）：1 张左转 90° 整页；
+        /// 2 张不旋转 1×2（上下）；≥3 张左转 90° 2×2。按「类」调用：滴滴发票 /
+        /// 餐饮 / 通信 / 加油+通行费（合一类）/ 其他兜底。此前 Windows 版除滴滴外
+        /// 一律 2×2 左旋（餐饮、自驾发票）或固定 1×2（通信、兜底），本次对齐分档。
+        /// </summary>
+        private void PlaceInvoiceTiered(IReadOnlyList<BillInfo> bills, string rulePrefix)
+        {
+            if (bills.Count == 0) return;
+            if (bills.Count == 1)
+            {
+                PlaceFullRotated(bills[0], rulePrefix + "-full");
+            }
+            else if (bills.Count == 2)
+            {
+                var f = NewFlow(1, 2, 0, rulePrefix + "-1x2");
+                foreach (var b in bills) Feed(f, b);
+            }
+            else
+            {
+                var f = NewFlow(2, 2, -90, rulePrefix + "-2x2");
+                foreach (var b in bills) Feed(f, b);
+            }
+        }
+
         /// <summary>酒店发票：每一源页单独成页，上下两格各贴一份（同张两份）。</summary>
         private void PlaceDuplicated1x2(BillInfo bill, string rule)
         {
@@ -367,13 +394,9 @@ public static class PdfComposer
 
             if (!isLocal)
             {
-                // 自驾：行程单整页 → 加油/通行费左旋 2×2
+                // 自驾：行程单整页 → 加油/通行费按发票类分档
                 foreach (var s in selfSheets) PlaceFull(s, "self-drive-sheet");
-                if (selfInvoices.Count > 0)
-                {
-                    var f = NewFlow(2, 2, -90, "self-drive-invoice-2x2");
-                    foreach (var b in selfInvoices) Feed(f, b);
-                }
+                PlaceInvoiceTiered(selfInvoices, "self-drive-invoice");
 
                 // P1 行程证明页：去程（最早）+ 回程（最晚）第 0 页上下排
                 BillInfo? outbound = transports.Count >= 1 ? transports[0] : null;
@@ -399,12 +422,8 @@ public static class PdfComposer
             }
             else
             {
-                // 本地通信：1×2 上下（不复制）
-                if (telecom.Count > 0)
-                {
-                    var f = NewFlow(1, 2, 0, "telecom-1x2");
-                    foreach (var b in telecom) Feed(f, b);
-                }
+                // 本地通信：发票类分档（与行程段同规）
+                PlaceInvoiceTiered(telecom, "telecom");
             }
 
             // 酒店：水单整页 + 发票同页两份，按金额配对穿插；未配对发票随后
@@ -449,35 +468,19 @@ public static class PdfComposer
                 foreach (var b in didiForms) Feed(f, b);
             }
 
-            // 滴滴发票：1 份左旋整页；多份左旋 2×2
-            if (didiInvoices.Count == 1)
-            {
-                PlaceFullRotated(didiInvoices[0], "didi-invoice-full");
-            }
-            else if (didiInvoices.Count > 1)
-            {
-                var f = NewFlow(2, 2, -90, "didi-invoice-2x2");
-                foreach (var b in didiInvoices) Feed(f, b);
-            }
+            // 滴滴发票：发票类分档
+            PlaceInvoiceTiered(didiInvoices, "didi-invoice");
 
-            // 餐饮：左旋 2×2
-            if (dining.Count > 0)
-            {
-                var f = NewFlow(2, 2, -90, "dining-2x2");
-                foreach (var b in dining) Feed(f, b);
-            }
+            // 餐饮：发票类分档
+            PlaceInvoiceTiered(dining, "dining");
 
-            // 兜底（toolkit 丢弃的其他类）：1×2 上下不旋转——保证任何票据都出现在整合 PDF 里
+            // 兜底（toolkit 丢弃的其他类）：发票类分档——保证任何票据都出现在整合 PDF 里
             var handled = new HashSet<BillInfo>(transports.Concat(selfSheets).Concat(selfInvoices)
                 .Concat(folios).Concat(didiForms).Concat(didiInvoices).Concat(dining).Concat(telecom));
             if (!isLocal) handled.UnionWith(invoices);
             var generic = bills.Where(b => !handled.Contains(b))
                 .OrderBy(b => FirstMmdd(b), StringComparer.Ordinal).ToList();
-            if (generic.Count > 0)
-            {
-                var f = NewFlow(1, 2, 0, "generic-1x2");
-                foreach (var b in generic) Feed(f, b);
-            }
+            PlaceInvoiceTiered(generic, "generic");
         }
 
         public ComposeResult Save(string outputPath)

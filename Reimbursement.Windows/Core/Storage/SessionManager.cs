@@ -539,6 +539,40 @@ public sealed class SessionManager
         Save();
     }
 
+    /// <summary>
+    /// 手动归类：把单张票据指定到目标行程（dirname）或「本地」。写 GroupOverride 后
+    /// 重跑整理流程落盘（分组、文件名与 trips/ 目录都以新归属为准）；界面据此刷新。
+    /// </summary>
+    public void MoveBill(string uid, string target)
+    {
+        var b = Manifest.Bills.FirstOrDefault(x => x.Uid == uid);
+        if (b == null) return;
+        b.GroupOverride = target;
+        ResyncAfterOverrideChange();
+    }
+
+    /// <summary>取消单张票据的手动归类，恢复自动归属。</summary>
+    public void ClearGroupOverride(string uid)
+    {
+        var b = Manifest.Bills.FirstOrDefault(x => x.Uid == uid);
+        if (b == null) return;
+        b.GroupOverride = null;
+        ResyncAfterOverrideChange();
+    }
+
+    private void ResyncAfterOverrideChange()
+    {
+        if (Manifest.Finalized)
+        {
+            // 用整理时保存的驻地集合重跑完整 Finalize（与界面 ResyncFinalized 同路径）
+            Finalize(new HashSet<string>(Manifest.HomeCities));
+        }
+        else
+        {
+            Save();
+        }
+    }
+
     /// <summary>用同 uid 的新识别结果替换旧票据（重新识别用）；找不到则追加。已整理时重新派生分组。</summary>
     public void ReplaceBill(BillInfo bill)
     {
