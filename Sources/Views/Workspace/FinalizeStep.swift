@@ -83,6 +83,7 @@ struct FinalizeStep: View {
 /// 单个行程卡片（对应 web 版的 trip card）
 private struct TripCard: View {
     let trip: TripGroup
+    @Environment(AppState.self) private var state
     @State private var expanded = false
 
     private var totalAmount: Double {
@@ -180,6 +181,7 @@ private struct TripCard: View {
                 VStack(spacing: 4) {
                     ForEach(trip.bills) { bill in
                         BillRow(bill: bill)
+                            .contextMenu { billContextMenu(bill, current: trip.dirname) }
                     }
                 }
                 .padding(.horizontal, 12)
@@ -192,11 +194,42 @@ private struct TripCard: View {
                 .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)
         )
     }
+
+    /// 票据右键菜单：手动归类（移动到其他行程/本地）与恢复自动归类。
+    /// 手动结果写入票据的 groupOverride 并落盘，重新整理不丢失（见 SessionManager.moveBill）
+    @ViewBuilder
+    private func billContextMenu(_ bill: BillInfo, current: String) -> some View {
+        Menu("移动到") {
+            if let session = state.currentSession {
+                ForEach(session.manifest.trips) { t in
+                    if t.dirname != current {
+                        Button(t.dirname) {
+                            session.moveBill(uid: bill.uid, to: t.dirname,
+                                             homeCities: state.settingsStore.settings.homeCities)
+                        }
+                    }
+                }
+            }
+            if current != "本地" {
+                Button("本地") {
+                    state.currentSession?.moveBill(uid: bill.uid, to: "本地",
+                                                   homeCities: state.settingsStore.settings.homeCities)
+                }
+            }
+        }
+        if bill.groupOverride != nil {
+            Button("恢复自动归类") {
+                state.currentSession?.clearGroupOverride(uid: bill.uid,
+                                                         homeCities: state.settingsStore.settings.homeCities)
+            }
+        }
+    }
 }
 
 /// 本地卡片
 private struct LocalCard: View {
     let bills: [BillInfo]
+    @Environment(AppState.self) private var state
     @State private var expanded = false
 
     private var totalAmount: Double {
@@ -241,6 +274,7 @@ private struct LocalCard: View {
                 VStack(spacing: 4) {
                     ForEach(bills) { bill in
                         BillRow(bill: bill)
+                            .contextMenu { billContextMenu(bill) }
                     }
                 }
                 .padding(.horizontal, 12)
@@ -252,6 +286,27 @@ private struct LocalCard: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)
         )
+    }
+
+    /// 票据右键菜单：从「本地」手动归入某个行程，或恢复自动归类
+    @ViewBuilder
+    private func billContextMenu(_ bill: BillInfo) -> some View {
+        Menu("移动到") {
+            if let session = state.currentSession {
+                ForEach(session.manifest.trips) { t in
+                    Button(t.dirname) {
+                        session.moveBill(uid: bill.uid, to: t.dirname,
+                                         homeCities: state.settingsStore.settings.homeCities)
+                    }
+                }
+            }
+        }
+        if bill.groupOverride != nil {
+            Button("恢复自动归类") {
+                state.currentSession?.clearGroupOverride(uid: bill.uid,
+                                                         homeCities: state.settingsStore.settings.homeCities)
+            }
+        }
     }
 }
 

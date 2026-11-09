@@ -40,6 +40,9 @@ struct BillInfo: Codable, Identifiable, Sendable {
     /// 酒店发票配对到的水单 uid（finalize 时由 matchAndEnrichHotel 写入；
     /// Excel/检查等下游据此判定配对，不再各自按金额重配）
     var pairedFolioUID: String? = nil
+    /// 手动归类目标（整理页右键「移动到」写入）：行程 dirname 或「本地」；
+    /// nil = 按自动规则归属。TripResolver 在自动归属后应用，重新整理不丢失
+    var groupOverride: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case uid
@@ -59,6 +62,7 @@ struct BillInfo: Codable, Identifiable, Sendable {
         case didiLetter = "didi_letter"
         case finalTargetName = "_final_target_name"
         case pairedFolioUID = "paired_folio_uid"
+        case groupOverride = "group_override"
     }
 
     init(
@@ -142,6 +146,7 @@ struct BillInfo: Codable, Identifiable, Sendable {
         self.didiLetter = try c.decodeIfPresent(String.self, forKey: .didiLetter) ?? ""
         self.finalTargetName = try c.decodeIfPresent(String.self, forKey: .finalTargetName) ?? ""
         self.pairedFolioUID = try c.decodeIfPresent(String.self, forKey: .pairedFolioUID)
+        self.groupOverride = try c.decodeIfPresent(String.self, forKey: .groupOverride)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -167,6 +172,7 @@ struct BillInfo: Codable, Identifiable, Sendable {
         if !didiLetter.isEmpty { try c.encode(didiLetter, forKey: .didiLetter) }
         if !finalTargetName.isEmpty { try c.encode(finalTargetName, forKey: .finalTargetName) }
         if let p = pairedFolioUID { try c.encode(p, forKey: .pairedFolioUID) }
+        if let o = groupOverride { try c.encode(o, forKey: .groupOverride) }
     }
 
     /// 由完整日期（yyyy-MM-dd）生成按日期升序的 MMDD 列表（去重）

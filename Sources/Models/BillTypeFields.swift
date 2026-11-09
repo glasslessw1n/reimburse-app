@@ -93,19 +93,19 @@ enum BillTypeFields {
         ),
         .dining: BillFieldSpec(
             required: ["amount", "issue_date"],
-            optional: ["merchant_name", "category", "headcount"],
+            optional: ["merchant_name", "category", "headcount", "city"],
             sortable: ["issue_date", "amount"],
             fileNamePart: ["issue_date", "merchant_name", "amount"]
         ),
         .telecom: BillFieldSpec(
             required: ["amount", "issue_date"],
-            optional: ["carrier", "phone_no", "month"],
+            optional: ["carrier", "phone_no", "month", "city"],
             sortable: ["issue_date", "amount"],
             fileNamePart: ["month", "carrier", "amount"]
         ),
         .other: BillFieldSpec(
             required: [],
-            optional: ["amount", "issue_date", "merchant_name", "invoice_form"],
+            optional: ["amount", "issue_date", "merchant_name", "invoice_form", "city"],
             sortable: [],
             fileNamePart: ["issue_date", "amount"]
         ),

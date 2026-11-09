@@ -348,4 +348,109 @@ struct TripResolverTests {
                 "行程中部的水单应归入行程\n\(dumpTrips(r.trips))")
         #expect(r.local.isEmpty)
     }
+
+    // MARK: - 驻地优先（2026-11-09 新增）
+
+    /// 万州行程的锚点对（重庆 ⇄ 万州，10-20 出发、10-22 返回）
+    private func wanzhouAnchors() -> [BillInfo] {
+        [
+            anchor(.trainTicket, from: "重庆", to: "万州", date: "2026-10-20"),
+            anchor(.trainTicket, from: "万州", to: "重庆", date: "2026-10-22"),
+        ]
+    }
+
+    /// 驻地滴滴（起终点都在重庆）日期落在万州行程窗口内 → 归本地，不被日期吸进万州行程
+    @Test func homeDidiTripGoesLocalDuringAwayTrip() {
+        var bills = wanzhouAnchors()
+        bills.append(anchor(.didiTrip, from: "重庆", to: "重庆", date: "2026-10-21", amount: 35))
+        let r = resolve(bills)
+        #expect(r.trips.count == 1)
+        #expect(r.local.contains { $0.billType == .didiTrip },
+                "重庆本地滴滴应归本地\n\(dumpTrips(r.trips)) local=\(r.local.map { $0.billType.rawValue })")
+        #expect(!r.trips[0].bills.contains { $0.billType == .didiTrip })
+    }
+
+    /// 万州当地滴滴（城市为万州）→ 归万州行程；万州是独立地名，不算驻地
+    @Test func awayDidiTripStaysInTrip() {
+        var bills = wanzhouAnchors()
+        bills.append(anchor(.didiTrip, from: "万州", to: "万州", date: "2026-10-21", amount: 28))
+        let r = resolve(bills)
+        #expect(r.trips[0].bills.contains { $0.billType == .didiTrip },
+                "万州滴滴应归万州行程\n\(dumpTrips(r.trips))")
+        #expect(!r.local.contains { $0.billType == .didiTrip })
+    }
+
+    /// 滴滴发票继承了行程单的驻地城市 → 跟随归本地
+    @Test func linkedDidiInvoiceFollowsHomeTripToLocal() {
+        var bills = wanzhouAnchors()
+        bills.append(anchor(.didiInvoice, from: "重庆", to: "重庆", date: "2026-10-21", amount: 35))
+        let r = resolve(bills)
+        #expect(r.local.contains { $0.billType == .didiInvoice },
+                "驻地滴滴发票应归本地\n\(dumpTrips(r.trips))")
+    }
+
+    /// 餐饮按开具地：开具地=驻地 → 本地；开具地=出差地 → 行程；无城市 → 回落日期归属
+    @Test func diningAssignmentByIssueCity() {
+        var bills = wanzhouAnchors()
+        bills.append(BillInfo(billType: .dining, amount: 120, sourceFile: "d1.pdf",
+                              fields: ["issue_date": "2026-10-21", "city": "重庆"]))
+        bills.append(BillInfo(billType: .dining, amount: 88, sourceFile: "d2.pdf",
+                              fields: ["issue_date": "2026-10-21", "city": "万州"]))
+        bills.append(BillInfo(billType: .dining, amount: 66, sourceFile: "d3.pdf",
+                              fields: ["issue_date": "2026-10-21"]))
+        let r = resolve(bills)
+        #expect(r.local.contains { $0.sourceFile == "d1.pdf" }, "重庆开具的餐饮应归本地")
+        #expect(r.trips[0].bills.contains { $0.sourceFile == "d2.pdf" }, "万州开具的餐饮应归行程")
+        #expect(r.trips[0].bills.contains { $0.sourceFile == "d3.pdf" }, "无城市的餐饮按日期归行程")
+    }
+
+    /// 城市规范化：「重庆市」与驻地「重庆」相等（通信发票开具地带「市」后缀）
+    @Test func citySuffixNormalization() {
+        var bills = wanzhouAnchors()
+        bills.append(BillInfo(billType: .telecom, amount: 99, sourceFile: "t.pdf",
+                              fields: ["issue_date": "2026-10-21", "city": "重庆市"]))
+        let r = resolve(bills)
+        #expect(r.local.contains { $0.billType == .telecom }, "「重庆市」应规范化后命中驻地")
+    }
+
+    // MARK: - 手动归类 override（2026-11-09 新增）
+
+    /// override 到「本地」压过日期归属
+    @Test func overrideToLocalBeatsDateAssignment() {
+        var bills = wanzhouAnchors()
+        var folio = BillInfo(billType: .hotelFolio, amount: 500, sourceFile: "f.pdf",
+                             fields: ["check_in_date": "2026-10-20", "check_out_date": "2026-10-22", "city": "万州"])
+        folio.groupOverride = "本地"
+        bills.append(folio)
+        let r = resolve(bills)
+        #expect(r.local.contains { $0.billType == .hotelFolio }, "手动移到本地的水单应在本地")
+        #expect(!r.trips[0].bills.contains { $0.billType == .hotelFolio })
+    }
+
+    /// override 到指定行程：日期上够不着的票据被手动归入该行程
+    @Test func overrideToTripPullsDistantBill() {
+        let base = wanzhouAnchors()
+        let probe = resolve(base)
+        let targetName = probe.trips[0].dirname
+        var dining = BillInfo(billType: .dining, amount: 50, sourceFile: "far.pdf",
+                              fields: ["issue_date": "2026-11-15"])
+        dining.groupOverride = targetName
+        let r = resolve(base + [dining])
+        #expect(r.trips[0].bills.contains { $0.sourceFile == "far.pdf" },
+                "手动指定行程的票据应进入该行程\n\(dumpTrips(r.trips))")
+        #expect(!r.local.contains { $0.sourceFile == "far.pdf" })
+    }
+
+    /// override 目标行程不存在（dirname 已变）→ 保留自动归属，不丢票
+    @Test func overrideToMissingTripFallsBackToAuto() {
+        var bills = wanzhouAnchors()
+        var dining = BillInfo(billType: .dining, amount: 60, sourceFile: "in.pdf",
+                              fields: ["issue_date": "2026-10-21"])
+        dining.groupOverride = "0101-0102 不存在"
+        bills.append(dining)
+        let r = resolve(bills)
+        #expect(r.trips[0].bills.contains { $0.sourceFile == "in.pdf" },
+                "目标行程不存在时应回落自动归属\n\(dumpTrips(r.trips))")
+        #expect(r.trips.flatMap { $0.bills }.count + r.local.count == bills.count, "票据总数不应丢失")
+    }
 }
