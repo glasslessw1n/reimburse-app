@@ -21,7 +21,7 @@
 	<key>CFBundleVersion</key>
 	<string>210</string>
 	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/glasslessw1n/reimburse-app/main/appcast.xml</string>
+	<string>https://reimbursment-macosupdate.oss-cn-shanghai.aliyuncs.com/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>2wrb+QD7MLSAvSM2rGF4KVkWf24+gkxW28v3HtvswMk=</string>
 	<key>SUEnableAutomaticChecks</key>
