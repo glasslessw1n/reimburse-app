@@ -39,7 +39,7 @@ echo ""
 echo "=== 步骤 2: 构建并打 DMG ==="
 bash BuildScripts/build_native.sh
 DMG_SRC="$ROOT_DIR/报销整理.dmg"
-[ -f "$DMG_SRC" ] || { echo "错误: 未找到 $DMG_SRC，构建可能失败" >&2; exit 1; }
+[ -f "$DMG_SRC" ] || { echo "错误: 未找到 ${DMG_SRC}，构建可能失败" >&2; exit 1; }
 
 echo ""
 echo "=== 步骤 3: 归档（ASCII 文件名，GitHub 会剥掉资产名里的中文） ==="
