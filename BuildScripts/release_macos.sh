@@ -26,7 +26,7 @@ TAG="v$VERSION"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 echo "→ 仓库根目录: $ROOT_DIR"
-echo "→ 版本: $VERSION（构建号 $BUILD_NUM，标签 $TAG）"
+echo "→ 版本: ${VERSION}（构建号 ${BUILD_NUM}，标签 ${TAG}）"
 
 echo ""
 echo "=== 步骤 1: 写版本号到 Sources/Info.plist ==="
@@ -84,7 +84,7 @@ $NEW_FILES
       git checkout -
 
 [3] 验证：启动一个已安装的旧版本，菜单「报销整理 → 检查更新…」
-    应能发现 $VERSION 并完成下载、重启更新。DMG（$DMG_SRC）
+    应能发现 $VERSION 并完成下载、重启更新。DMG（${DMG_SRC}）
     仍可作为首次安装包分发；需要的话也可以在 GitHub 另建 $TAG
     的版本 Release 把它挂上去，那与自动更新无关，纯供人下载。
 ==============================================================
