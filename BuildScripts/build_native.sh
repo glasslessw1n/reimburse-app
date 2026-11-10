@@ -68,6 +68,11 @@ DMG_PATH="$ROOT_DIR/报销整理.dmg"
 STAGE_DIR="$(mktemp -d)"
 cp -R "$APP_PATH" "$STAGE_DIR/"
 ln -s /Applications "$STAGE_DIR/Applications"
+# 随包附安装使用说明（HTML，双击用浏览器打开，可直接打印）
+if [ -f "$ROOT_DIR/BuildAssets/install-guide.html" ]; then
+    cp "$ROOT_DIR/BuildAssets/install-guide.html" "$STAGE_DIR/报销助手-安装使用说明.html"
+    echo "  ✓ 已放入安装使用说明"
+fi
 hdiutil create -volname "报销整理" \
     -srcfolder "$STAGE_DIR" \
     -ov -format UDZO "$DMG_PATH" 2>&1 | tail -2
