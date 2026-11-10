@@ -1,7 +1,7 @@
 # Reimbursement.Windows
 
 `reimburse-app` 的 Windows 版：医科达售后差旅报销助手（票据识别 → 行程整理 → 检查 → 导出）。
-当前版本 **v1.3.2**（.NET 10 + WinUI 3，自包含发布，目标机零前置）。
+当前版本 **v1.4.0**（.NET 10 + WinUI 3，自包含发布，目标机零前置）。
 选型与设计分析见 `docs/windows-port-analysis` 分支的 `docs/windows-port-analysis.md`。
 
 ## 结构
