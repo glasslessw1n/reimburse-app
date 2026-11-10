@@ -20,16 +20,10 @@
 	<string>2.1.0</string>
 	<key>CFBundleVersion</key>
 	<string>210</string>
-	<!-- Sparkle 自动更新：feed 为仓库 main 分支上的 appcast.xml（发版时由
-	     generate_appcast 重新生成并提交）；更新包本体挂在各版本 GitHub Release。 -->
 	<key>SUFeedURL</key>
 	<string>https://raw.githubusercontent.com/glasslessw1n/reimburse-app/main/appcast.xml</string>
-	<!-- 下行填 Sparkle 工具 bin/generate_keys 输出的 EdDSA 公钥（在本机生成，
-	     私钥存本机钥匙串、切勿入库）。占位符不替换，更新校验必然失败、
-	     程序其余功能不受影响；正式分发种子版前必须替换。 -->
 	<key>SUPublicEDKey</key>
-	<string>REPLACE_WITH_GENERATE_KEYS_PUBLIC_KEY</string>
-	<!-- 内部工具：不弹首次「是否自动检查更新」询问，默认开启自动检查 -->
+	<string>2wrb+QD7MLSAvSM2rGF4KVkWf24+gkxW28v3HtvswMk=</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUScheduledCheckInterval</key>
