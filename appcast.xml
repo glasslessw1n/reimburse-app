@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 报销整理（macOS）Sparkle 更新 feed。
+     本文件由 Sparkle 的 generate_appcast 工具在发版时整体重新生成，请勿手工编辑条目；
+     发版流程见 BuildScripts/SPARKLE-RELEASE.md。当前为空 feed（尚无经 Sparkle 分发的版本）。 -->
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>报销整理</title>
+    <link>https://raw.githubusercontent.com/glasslessw1n/reimburse-app/main/appcast.xml</link>
+    <description>报销整理 macOS 版更新</description>
+    <language>zh-CN</language>
+  </channel>
+</rss>

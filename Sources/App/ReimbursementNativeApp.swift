@@ -6,10 +6,21 @@
 //
 
 import SwiftUI
+import Sparkle
 
 @main
 struct ReimbursementNativeApp: App {
     @State private var state = AppState()
+
+    // Sparkle 更新控制器：startingUpdater=true 表示启动即按 Info.plist 的
+    // SUFeedURL / SUScheduledCheckInterval 安排自动检查（后台下载、提示后重启生效）。
+    // 须在 App 生命周期内常驻，故随 @main 一起创建（Sparkle 官方 SwiftUI 接入方式）。
+    private let updaterController: SPUStandardUpdaterController
+
+    init() {
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+    }
 
     var body: some Scene {
         WindowGroup("报销整理") {
@@ -24,6 +35,9 @@ struct ReimbursementNativeApp: App {
                 Button("关于 报销整理") {
                     state.showAbout = true
                 }
+            }
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesView(updater: updaterController.updater)
             }
             CommandGroup(replacing: .newItem) {
                 Button("新建整理") {

@@ -1,4 +1,12 @@
 name: ReimbursementNative
+
+# Sparkle 自动更新框架（mac 版首个、也是目前唯一的第三方依赖，2026-11-10 接入）。
+# 固定在大版本内跟随 2.10.x；升级时改这里并重新 xcodegen generate。
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.10.1
+
 options:
   bundleIdPrefix: com.local
   deploymentTarget:
@@ -60,6 +68,7 @@ targets:
           ENABLE_TESTABILITY: "NO"
           SWIFT_COMPILATION_MODE: "wholemodule"
     dependencies:
+      - package: Sparkle
       - sdk: SwiftUI.framework
       - sdk: AppKit.framework
       - sdk: WebKit.framework          # M9 报销系统填报会用
