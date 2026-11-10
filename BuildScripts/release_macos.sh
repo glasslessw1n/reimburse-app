@@ -24,6 +24,10 @@ fi
 BUILD_NUM=$((MAJ * 100 + MIN * 10 + PAT))
 TAG="v$VERSION"
 
+MARKER="$(mktemp)"
+trap 'rm -f "$MARKER"' EXIT
+sleep 1
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 echo "→ 仓库根目录: $ROOT_DIR"
@@ -58,8 +62,6 @@ for d in "${SPARKLE_TOOLS:-}" "$HOME/Downloads/Sparkle-2.10.1" "$HOME/Sparkle-2.
 done
 [ -n "$GA" ] || { echo "错误: 找不到 Sparkle 工具包的 bin/generate_appcast，请设 SPARKLE_TOOLS 环境变量指向解压目录" >&2; exit 1; }
 echo "  使用工具: $GA"
-MARKER="$(mktemp)"
-sleep 1
 # 更新包与 feed 统一托管在阿里云 OSS（Bucket: reimbursment-macosupdate，华东2·上海）。
 # generate_appcast 按「一个目录 = 一个下载前缀」设计，前缀必须固定，不能按版本变。
 OSS_BASE="https://reimbursment-macosupdate.oss-cn-shanghai.aliyuncs.com"
