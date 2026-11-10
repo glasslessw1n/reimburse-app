@@ -96,6 +96,10 @@ jobs:
           generate_release_notes: true
       # Velopack：同一份产物再打成安装包 + 更新源，挂到同一个 Release。
       # 用户首次用 Setup.exe 安装后，后续版本自动增量更新，不必再手动下整包。
+      # 增量（delta）包的前提：pack 时上一版 full 包必须在 --outputDir（默认 ./Releases）里，
+      # CI 是全新环境，必须先 vpk download 把上一版拉下来当基准——此前漏了这步，
+      # 每个版本只有 full 包，已安装的客户端每次更新都在下整包（数百 MB）。
+      # 补上后：只改程序代码的版本，delta 只有几 MB；原生依赖（Paddle 等）不变就不重传。
       - name: Pack and upload Velopack release (tag builds only)
         if: startsWith(github.ref, 'refs/tags/windows-v')
         shell: pwsh
@@ -103,6 +107,8 @@ jobs:
           dotnet tool install -g vpk
           $dir = "Reimbursement.Windows/App/bin/x64/Release/net10.0-windows10.0.19041.0/win-x64"
           $version = "${{ github.ref_name }}".Replace("windows-v", "")
+          vpk download github --repoUrl https://github.com/glasslessw1n/reimburse-app --token ${{ secrets.GITHUB_TOKEN }}
+          if ($LASTEXITCODE -ne 0) { Write-Host "无上一版可作 delta 基准（首个版本时正常），继续全量打包" }
           vpk pack --packId Reimbursement.Windows --packVersion $version --packDir $dir --mainExe Reimbursement.App.exe --packTitle "报销助手"
           vpk upload github --repoUrl https://github.com/glasslessw1n/reimburse-app --tag ${{ github.ref_name }} --token ${{ secrets.GITHUB_TOKEN }}
         env:
