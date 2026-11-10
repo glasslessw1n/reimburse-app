@@ -88,12 +88,6 @@ jobs:
           $zip = "Reimbursement-Windows-${{ github.ref_name }}.zip"
           Compress-Archive -Path "$dir/*" -DestinationPath $zip
           Write-Host "release zip: $zip"
-      - name: Attach zip to release
-        if: startsWith(github.ref, 'refs/tags/windows-v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: Reimbursement-Windows-*.zip
-          generate_release_notes: true
       # Velopack：同一份产物再打成安装包 + 更新源，挂到同一个 Release。
       # 用户首次用 Setup.exe 安装后，后续版本自动增量更新，不必再手动下整包。
       # 增量（delta）包的前提：pack 时上一版 full 包必须在 --outputDir（默认 ./Releases）里，
@@ -113,3 +107,12 @@ jobs:
           vpk upload github --repoUrl https://github.com/glasslessw1n/reimburse-app --tag ${{ github.ref_name }} --token ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 整包 zip 必须在 Velopack 之后再挂：vpk upload 要求目标 Release 不存在、由它创建，
+      # 若 softprops 先建了 Release，vpk 会直接拒绝上传（2026-11-10 首发实测）。
+      # 反过来 softprops 能往已存在的 Release 补挂文件，所以 zip 放最后。
+      - name: Attach zip to release
+        if: startsWith(github.ref, 'refs/tags/windows-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Reimbursement-Windows-*.zip
+          generate_release_notes: true
