@@ -91,7 +91,9 @@ public class CropRegressionTests
                 Session.SaveOriginal(pdf, src);
                 Session.Ingest(new BillInfo(type, amount, src, fields));
             }
-            // 两张登机牌锚定一段行程，滴滴发票两张随后
+            // 两张登机牌锚定一段行程，滴滴发票三张随后
+            // （2026-11-09 发票分档：2 张走 1×2 不旋转，≥3 张才进 2×2 左旋网格；
+            //   本文件守护的回归发生在 2×2 单元格填充，故用三张保持原守护路径）
             Add(BillType.BoardingPass, 800, "bp1.pdf", SyntheticPdf(), new()
             {
                 ["departure_date"] = "2026-09-10", ["origin_city"] = "重庆", ["destination_city"] = "厦门",
@@ -103,6 +105,8 @@ public class CropRegressionTests
             Add(BillType.DidiInvoice, 85.5, "dinv-b.pdf", DidiLikePdf,
                 new() { ["issue_date"] = "2026-09-13" });
             Add(BillType.DidiInvoice, 92.0, "dinv-c.pdf", DidiLikePdf,
+                new() { ["issue_date"] = "2026-09-13" });
+            Add(BillType.DidiInvoice, 78.0, "dinv-d.pdf", DidiLikePdf,
                 new() { ["issue_date"] = "2026-09-13" });
             Session.Finalize(new HashSet<string> { "重庆" });
             return this;
@@ -133,7 +137,7 @@ public class CropRegressionTests
         var result = PdfComposer.Compose(f.Session, outPath);
 
         var cells = result.Placements.Where(p => p.Rule == "didi-invoice-2x2").ToList();
-        Assert.Equal(2, cells.Count);
+        Assert.Equal(3, cells.Count);
         Assert.All(cells, p =>
         {
             Assert.Equal(-90, p.Rotation);

@@ -69,8 +69,8 @@ public class ExcelBuilderTests
         var xml = ExcelBuilder.BuildSheet(bills, HomeCities);
         var hotelCount = xml.Split("酒店住宿").Length - 1;
         Assert.Equal(1, hotelCount); // 水单+发票应归并为一行
-        Assert.Contains("1753.00", xml); // 总计应为 553 + 1200 = 1753
-        Assert.DoesNotContain("2953.00", xml); // 不应重复计入酒店金额
+        Assert.Contains("1,753.00", xml); // 总计应为 553 + 1200 = 1,753（千分位写法）
+        Assert.DoesNotContain("2,953.00", xml); // 不应重复计入酒店金额
     }
 
     /// <summary>新增：Build 产出的 xlsx 是结构完整的 zip 包（6 个部件，工作簿 sheet 名正确）。</summary>
@@ -102,5 +102,104 @@ public class ExcelBuilderTests
         var entry = zip.GetEntry(name)!;
         using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
         return reader.ReadToEnd();
+    }
+
+    // MARK: - 样例版式（2026-11-09 附件 0910-1026.xlsx 定版，与 mac 版同口径）
+
+    [Fact]
+    public void SampleLayoutSkeleton()
+    {
+        var train = new BillInfo(BillType.TrainTicket, amount: 553, sourceFile: "火车票.pdf",
+            fields: Fields(("departure_date", "2026-09-10"), ("origin_city", "重庆"), ("destination_city", "厦门")));
+        train.TargetFilename = "0910 重庆-厦门 553.pdf";
+        var bills = new List<BillInfo>
+        {
+            train,
+            new(BillType.BoardingPass, amount: 0, sourceFile: "登机牌.pdf",
+                fields: Fields(("departure_date", "2026-09-12"), ("origin_city", "厦门"), ("destination_city", "重庆"))),
+            new(BillType.HotelFolio, amount: 1200, sourceFile: "水单.pdf",
+                fields: Fields(("check_in_date", "2026-09-10"), ("check_out_date", "2026-09-12"), ("city", "厦门"))),
+            new(BillType.Dining, amount: 100, sourceFile: "餐饮.pdf", fields: Fields(("issue_date", "2026-09-11"))),
+        };
+        var xml = ExcelBuilder.BuildSheet(bills, HomeCities);
+        // 日期 MM/DD 写法；火车票与行程单同名「火车/机票」；登机牌也带路线
+        Assert.Contains("09/10", xml);
+        Assert.Contains("09/12", xml);
+        Assert.Contains("火车/机票", xml);
+        Assert.Contains("厦门-重庆", xml);
+        // 备注列写整理后的目标文件名
+        Assert.Contains("0910 重庆-厦门 553.pdf", xml);
+        // 固定骨架：交通/酒店小计在；无滴滴也出汇总占位行；餐饮不出小计
+        Assert.Contains("交通小计", xml);
+        Assert.Contains("酒店小计", xml);
+        Assert.Contains("共0段行程", xml);
+        Assert.Contains("返回重庆: 09/12", xml);
+        Assert.DoesNotContain("餐饮小计", xml);
+        // 合计/总计：千分位金额 + 分类整数明细
+        Assert.Contains("本段合计: ¥1,853.00", xml);
+        Assert.Contains("报销总计: ¥1,853.00  (交通:553  酒店:1,200  滴滴:0  餐饮:100)", xml);
+        // 版式元素：列宽、首行冻结、段标题/合计/总计三处合并
+        Assert.Contains("<cols>", xml);
+        Assert.Contains("state=\"frozen\"", xml);
+        Assert.Contains("<mergeCells count=\"3\">", xml);
+    }
+
+    /// <summary>汇总发票（一张盖多段）按子集和覆盖：85.5 + 92 = 177.5，行程单金额不重复计入。</summary>
+    [Fact]
+    public void DidiSummaryInvoiceCoversMultipleTrips()
+    {
+        var bills = new List<BillInfo>
+        {
+            new(BillType.TrainTicket, amount: 100, sourceFile: "火车票.pdf",
+                fields: Fields(("departure_date", "2026-09-10"), ("origin_city", "重庆"), ("destination_city", "厦门"))),
+            new(BillType.DidiTrip, amount: 85.5, sourceFile: "行程单1.pdf",
+                fields: Fields(("departure_date", "2026-09-11"))),
+            new(BillType.DidiTrip, amount: 92, sourceFile: "行程单2.pdf",
+                fields: Fields(("departure_date", "2026-09-11"))),
+            new(BillType.DidiInvoice, amount: 177.5, sourceFile: "滴滴发票.pdf",
+                fields: Fields(("issue_date", "2026-09-12"))),
+        };
+        var xml = ExcelBuilder.BuildSheet(bills, HomeCities);
+        // 滴滴只计发票 177.5；总计 = 100 + 177.5 = 277.50（旧等额匹配会算成 455.00）
+        Assert.Contains("报销总计: ¥277.50", xml);
+        Assert.DoesNotContain("455.00", xml);
+    }
+
+    /// <summary>酒店配对以 PairedFolioUID 为准：两住同额、发票 ID 指向第二住时不得按金额误配第一住。</summary>
+    [Fact]
+    public void HotelPairingPrefersPairedFolioUid()
+    {
+        var folio1 = new BillInfo(BillType.HotelFolio, amount: 800, sourceFile: "水单1.pdf",
+            fields: Fields(("check_in_date", "2026-09-10"), ("check_out_date", "2026-09-11"), ("city", "上海")));
+        var folio2 = new BillInfo(BillType.HotelFolio, amount: 800, sourceFile: "水单2.pdf",
+            fields: Fields(("check_in_date", "2026-09-11"), ("check_out_date", "2026-09-12"), ("city", "广州")));
+        var invoice = new BillInfo(BillType.HotelInvoice, amount: 800, sourceFile: "发票.pdf",
+            fields: Fields(("issue_date", "2026-09-12")));
+        invoice.PairedFolioUID = folio2.Uid;
+        var bills = new List<BillInfo>
+        {
+            new(BillType.TrainTicket, amount: 100, sourceFile: "火车票.pdf",
+                fields: Fields(("departure_date", "2026-09-10"), ("origin_city", "重庆"), ("destination_city", "上海"))),
+            folio1, folio2, invoice,
+        };
+        var xml = ExcelBuilder.BuildSheet(bills, HomeCities);
+        // 两住各计一次 800（发票不重复计）→ 酒店 1,600；总计 1,700
+        Assert.Contains("报销总计: ¥1,700.00", xml);
+        // 第一住无发票应标缺发票，第二住有发票（✓ 在行内 E 列）
+        Assert.Contains("✗ 缺发票", xml);
+    }
+
+    [Fact]
+    public void LocalTelecomMonthLabel()
+    {
+        var bills = new List<BillInfo>
+        {
+            new(BillType.Telecom, amount: 197.3, sourceFile: "通信.pdf",
+                fields: Fields(("issue_date", "2026-10-09"), ("month", "2026-10"))),
+        };
+        var xml = ExcelBuilder.BuildSheet(bills, HomeCities);
+        Assert.Contains("【本地费用】", xml);
+        Assert.Contains("10月", xml); // 通信费 B 列应为月份标签
+        Assert.Contains("通信小计", xml);
     }
 }

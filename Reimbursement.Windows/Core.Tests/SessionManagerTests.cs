@@ -11,6 +11,20 @@ public class SessionManagerTests
 {
     // MARK: - BuildFilename
 
+    /// <summary>火车票文件名不含车次（用户口径）：日期 + 路线 + 金额。</summary>
+    [Fact]
+    public void BuildFilenameTrainTicketWithoutTrainNo()
+    {
+        var bill = new BillInfo(BillType.TrainTicket, 553, "火车票.pdf", new Dictionary<string, string?>
+        {
+            ["departure_date"] = "2026-09-10",
+            ["origin_city"] = "重庆",
+            ["destination_city"] = "厦门",
+            ["train_no"] = "G1833",
+        });
+        Assert.Equal("0910 重庆-厦门 553.pdf", SessionManager.BuildFilename(bill));
+    }
+
     [Fact]
     public void BuildFilenameHotelFolio()
     {
@@ -116,6 +130,31 @@ public class SessionManagerTests
         var invoice = bills[2];
         Assert.Equal("上海外滩茂悦大酒店", invoice.F("hotel_name"));
         Assert.Equal(new[] { "上海" }, invoice.Cities);
+        // 配对结论落账：发票记下所配水单的 Uid（下游按 ID 认配对）
+        Assert.Equal(bills[0].Uid, invoice.PairedFolioUID);
+    }
+
+    /// <summary>同额但酒店名毫不相关（相似度低于门槛）→ 不自动配对，标记待复核，也不会误绑。</summary>
+    [Fact]
+    public void HotelMatchRejectsSameAmountDifferentHotel()
+    {
+        var bills = new List<BillInfo>
+        {
+            new(BillType.HotelFolio, 800, "folio.pdf", new Dictionary<string, string?>
+            {
+                ["hotel_name"] = "上海外滩茂悦大酒店", ["city"] = "上海",
+                ["check_in_date"] = "2026-09-10", ["check_out_date"] = "2026-09-12",
+            }),
+            new(BillType.HotelInvoice, 800, "inv.pdf", new Dictionary<string, string?>
+            {
+                ["seller_name"] = "广州珠江大酒店", ["issue_date"] = "2026-09-12",
+            }),
+        };
+        SessionManager.MatchAndEnrichHotel(bills);
+        var invoice = bills[1];
+        Assert.Equal("", invoice.PairedFolioUID);
+        Assert.True(invoice.NeedsReview);
+        Assert.Contains("未自动配对", invoice.ReviewReason);
     }
 
     // MARK: - 滴滴字母按时间先后编号

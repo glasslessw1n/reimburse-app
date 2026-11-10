@@ -34,6 +34,17 @@ public sealed class BillInfo
     public string DidiLetter { get; set; } = "";
     /// <summary>match 后的最终目标文件名（hotel invoice 关联 folio 后可能改名）。</summary>
     public string FinalTargetName { get; set; } = "";
+    /// <summary>
+    /// 酒店配对 ID：整理（MatchAndEnrichHotel）时配对成功后，发票一侧记录所配水单的 Uid。
+    /// 下游（Excel 计账、整合 PDF 排版）一律按这个 ID 认配对，不在输出时按金额重配。
+    /// 空 = 未配对（或老清单无此信息）。
+    /// </summary>
+    public string PairedFolioUID { get; set; } = "";
+    /// <summary>
+    /// 手动归类覆盖：用户在整理结果里指定的目标行程 dirname（或「本地」）。
+    /// 非 null 时 TripResolver 在自动归属之后应用；目标行程不存在时回落自动归属（不清除本字段）。
+    /// </summary>
+    public string? GroupOverride { get; set; }
 
     internal static string NewUid() => Guid.NewGuid().ToString().ToUpperInvariant();
 
@@ -139,6 +150,8 @@ public sealed class BillInfoJsonConverter : JsonConverter<BillInfo>
         b.Error = Str(root, "error") ?? "";
         b.DidiLetter = Str(root, "didi_letter") ?? "";
         b.FinalTargetName = Str(root, "_final_target_name") ?? "";
+        b.GroupOverride = Str(root, "group_override");
+        b.PairedFolioUID = Str(root, "paired_folio_uid") ?? "";
         return b;
     }
 
@@ -202,6 +215,8 @@ public sealed class BillInfoJsonConverter : JsonConverter<BillInfo>
         if (Len(b.Error) > 0) writer.WriteString("error", b.Error);
         if (Len(b.DidiLetter) > 0) writer.WriteString("didi_letter", b.DidiLetter);
         if (Len(b.FinalTargetName) > 0) writer.WriteString("_final_target_name", b.FinalTargetName);
+        if (Len(b.GroupOverride) > 0) writer.WriteString("group_override", b.GroupOverride);
+        if (Len(b.PairedFolioUID) > 0) writer.WriteString("paired_folio_uid", b.PairedFolioUID);
         writer.WriteEndObject();
     }
 }

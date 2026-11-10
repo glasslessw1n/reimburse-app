@@ -21,7 +21,7 @@ public static class BillTypeFields
                 ["departure_date", "origin_city", "destination_city", "amount"],
                 ["train_no", "departure_time", "seat_type", "ticket_no", "passenger_name", "id_no_masked"],
                 ["departure_date", "amount"],
-                ["departure_date", "train_no", "origin_city", "destination_city", "amount"]),
+                ["departure_date", "origin_city", "destination_city", "amount"]),
             [BillType.FlightItinerary] = S(
                 ["departure_date", "origin_city", "destination_city", "amount"],
                 ["flight_no", "departure_time", "origin_airport", "destination_airport",
@@ -77,17 +77,17 @@ public static class BillTypeFields
                 ["issue_date", "amount"]),
             [BillType.Dining] = S(
                 ["amount", "issue_date"],
-                ["merchant_name", "category", "headcount"],
+                ["merchant_name", "category", "headcount", "city"],
                 ["issue_date", "amount"],
                 ["issue_date", "merchant_name", "amount"]),
             [BillType.Telecom] = S(
                 ["amount", "issue_date"],
-                ["carrier", "phone_no", "month"],
+                ["carrier", "phone_no", "month", "city"],
                 ["issue_date", "amount"],
                 ["month", "carrier", "amount"]),
             [BillType.Other] = S(
                 [],
-                ["amount", "issue_date", "merchant_name", "invoice_form"],
+                ["amount", "issue_date", "merchant_name", "invoice_form", "city"],
                 [],
                 ["issue_date", "amount"]),
         };

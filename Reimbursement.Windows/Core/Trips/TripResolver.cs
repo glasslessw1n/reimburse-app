@@ -141,7 +141,7 @@ public static class TripResolver
             }
         }
 
-        // non-anchor：按「所有相关完整日期」就近归到 trip（≤7 天）
+        // non-anchor：先驻地优先，再按「所有相关完整日期」就近归到 trip（≤7 天）
         var local = new List<BillInfo>();
         foreach (var non in nonAnchors)
         {
@@ -149,6 +149,36 @@ public static class TripResolver
             if (pool.Count == 0)
             {
                 local.Add(non);
+                continue;
+            }
+            // 驻地优先（压过日期就近归属）：万州行程窗口期内的重庆本地滴滴/餐饮
+            // 不再因日期重叠被吸进万州行程。滴滴另有边界日例外（见 IsHomeBound 处说明）。
+            if (IsHomeBound(non, homeCities))
+            {
+                var assigned = false;
+                if (non.BillType is BillType.DidiTrip or BillType.DidiInvoice)
+                {
+                    // 边界日例外（仅滴滴行程单/发票）：城市同为驻地无法区分「本地日常
+                    // 打车」与「出发/返回日去回车站机场的接驳」——后者只会发生在行程
+                    // 首日或末日。驻地滴滴日期命中某行程首日/末日 → 归该行程。
+                    for (var i = 0; i < groups.Count; i++)
+                    {
+                        if (pool.Contains(groupFirst[i]) || pool.Contains(groupLast[i]))
+                        {
+                            var bb = non.Clone();
+                            bb.TargetSubdir = groups[i].Dirname;
+                            groups[i].Bills.Add(bb);
+                            assigned = true;
+                            break;
+                        }
+                    }
+                }
+                if (!assigned)
+                {
+                    var lb = non.Clone();
+                    lb.TargetSubdir = "本地";
+                    local.Add(lb);
+                }
                 continue;
             }
             var firstDate = pool[0];
@@ -172,6 +202,10 @@ public static class TripResolver
                 local.Add(b);
             }
         }
+
+        // 手动归类覆盖（用户在整理结果里指定）：目标行程不存在时回落自动归属，
+        // override 本身保留，行程名恢复后再生效
+        ApplyGroupOverrides(groups, local);
 
         // 无日期的 anchor 落到「本地」，保证不丢
         foreach (var u0 in undatedAnchors)
@@ -238,6 +272,75 @@ public static class TripResolver
 
     private static bool IsHomeCity(string city, IReadOnlySet<string> home) =>
         home.Contains(city.Trim().ToLowerInvariant());
+
+    /// <summary>
+    /// 适用「驻地优先」的类型：已知城市全部为驻地时直接归「本地」，不被日期吸进行程
+    /// （滴滴另有「边界日例外」：落在行程出发/返回日的驻地滴滴是接驳，归该行程，见归属循环）。
+    /// 城市按地名标签比对，不按行政隶属——万州是独立地名，不算驻地重庆。
+    /// </summary>
+    private static readonly HashSet<BillType> HomeBoundTypes = new()
+    {
+        BillType.DidiTrip, BillType.DidiInvoice, BillType.Dining, BillType.Telecom, BillType.Other,
+    };
+
+    /// <summary>城市规范化：去空白、转小写、去掉尾随的「市」（重庆市→重庆；万州不变）。</summary>
+    public static string NormalizeCity(string raw)
+    {
+        var s = raw.Trim().ToLowerInvariant();
+        if (s.Length > 1 && s.EndsWith("市")) s = s[..^1];
+        return s;
+    }
+
+    private static bool IsHomeBound(BillInfo bill, IReadOnlySet<string> homeCities)
+    {
+        if (homeCities.Count == 0) return false;
+        if (!HomeBoundTypes.Contains(bill.BillType)) return false;
+        if (bill.Cities.Count == 0) return false; // 城市未知 → 不适用，走日期归属
+        var home = new HashSet<string>(homeCities.Select(NormalizeCity));
+        return bill.Cities.All(c => home.Contains(NormalizeCity(c)));
+    }
+
+    /// <summary>应用手动归类覆盖：把带 GroupOverride 的票据移到目标行程或「本地」。</summary>
+    private static void ApplyGroupOverrides(List<TripGroup> groups, List<BillInfo> local)
+    {
+        bool TripExists(string dirname) => groups.Any(g => g.Dirname == dirname);
+        var moving = new List<BillInfo>();
+        foreach (var g in groups)
+        {
+            for (var i = g.Bills.Count - 1; i >= 0; i--)
+            {
+                var b = g.Bills[i];
+                if (b.GroupOverride is { } target && target != g.Dirname
+                    && (target == "本地" || TripExists(target)))
+                {
+                    g.Bills.RemoveAt(i);
+                    moving.Add(b);
+                }
+            }
+        }
+        for (var i = local.Count - 1; i >= 0; i--)
+        {
+            var b = local[i];
+            if (b.GroupOverride is { } target && target != "本地" && TripExists(target))
+            {
+                local.RemoveAt(i);
+                moving.Add(b);
+            }
+        }
+        foreach (var b in moving)
+        {
+            if (b.GroupOverride == "本地")
+            {
+                b.TargetSubdir = "本地";
+                local.Add(b);
+            }
+            else if (groups.FirstOrDefault(g => g.Dirname == b.GroupOverride) is { } g)
+            {
+                b.TargetSubdir = g.Dirname;
+                g.Bills.Add(b);
+            }
+        }
+    }
 
     /// <summary>YYYY-MM-DD[THH:mm:ss] → MMDD（例：2026-09-10 → 0910）。</summary>
     public static string MmddFromDateString(string s)

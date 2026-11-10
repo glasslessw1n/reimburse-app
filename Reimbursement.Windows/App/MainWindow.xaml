@@ -53,6 +53,9 @@
         <!-- 分组票据行（整理后）：左侧类别色条 + 类型/金额/日期/城市 -->
         <DataTemplate x:Key="GroupBillTemplate">
             <Grid Padding="6,6" ColumnSpacing="10">
+                <Grid.ContextFlyout>
+                    <MenuFlyout Opening="BillContextFlyout_Opening" />
+                </Grid.ContextFlyout>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="4" />
                     <ColumnDefinition Width="*" />
