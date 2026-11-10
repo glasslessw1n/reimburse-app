@@ -1,0 +1,25 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>报销整理</title>
+        <item>
+            <title>2.1.1</title>
+            <pubDate>Tue, 10 Nov 2026 12:29:03 +0800</pubDate>
+            <sparkle:version>211</sparkle:version>
+            <sparkle:shortVersionString>2.1.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/glasslessw1n/reimburse-app/releases/download/macos-updates/Reimbursement-2.1.1.dmg" length="4482840" type="application/octet-stream" sparkle:edSignature="2xQUhCnP8YVQE/cdAXkAvPfs6Z1l5d3HRZjazUX85hH6AV0HFE/hiIRqR8v/ItRfNPDCs1q+zXVcamuJM2QZCA=="/>
+            <sparkle:deltas>
+                <enclosure url="https://github.com/glasslessw1n/reimburse-app/releases/download/macos-updates/%E6%8A%A5%E9%94%80%E6%95%B4%E7%90%86211-210.delta" sparkle:deltaFrom="210" length="2382" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976240" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="JnkuIHZDH//b3fsdtqdVth/cm18SO9ax6MR0/8VW77/vG0bSRD+RXDLQ7PeVtRQVU+yDGshbrkaj4AgbofEfAw=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
+            <title>2.1.0</title>
+            <pubDate>Tue, 10 Nov 2026 11:47:33 +0800</pubDate>
+            <sparkle:version>210</sparkle:version>
+            <sparkle:shortVersionString>2.1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/glasslessw1n/reimburse-app/releases/download/macos-updates/Reimbursement-2.1.0.dmg" length="4482796" type="application/octet-stream" sparkle:edSignature="2ao3n3lG1zQfotcd4AsL9N455jgbvcd2/JBrtXWpyjDdGk+kDrSt/LgaMCkTVDsLA9EX5JJA4UPhlQ9g1zv+Dg=="/>
+        </item>
+    </channel>
+</rss>
