@@ -10,7 +10,7 @@
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/glasslessw1n/reimburse-app/releases/download/macos-updates/Reimbursement-2.1.1.dmg" length="4482840" type="application/octet-stream" sparkle:edSignature="2xQUhCnP8YVQE/cdAXkAvPfs6Z1l5d3HRZjazUX85hH6AV0HFE/hiIRqR8v/ItRfNPDCs1q+zXVcamuJM2QZCA=="/>
             <sparkle:deltas>
-                <enclosure url="https://github.com/glasslessw1n/reimburse-app/releases/download/macos-updates/%E6%8A%A5%E9%94%80%E6%95%B4%E7%90%86211-210.delta" sparkle:deltaFrom="210" length="2382" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976240" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="JnkuIHZDH//b3fsdtqdVth/cm18SO9ax6MR0/8VW77/vG0bSRD+RXDLQ7PeVtRQVU+yDGshbrkaj4AgbofEfAw=="/>
+                <enclosure url="https://github.com/glasslessw1n/reimburse-app/releases/download/macos-updates/211-210.delta" sparkle:deltaFrom="210" length="2382" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976240" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="JnkuIHZDH//b3fsdtqdVth/cm18SO9ax6MR0/8VW77/vG0bSRD+RXDLQ7PeVtRQVU+yDGshbrkaj4AgbofEfAw=="/>
             </sparkle:deltas>
         </item>
         <item>
