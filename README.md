@@ -6,10 +6,12 @@
 
 | | |
 |---|---|
-| 当前版本 | 2.0.0 |
+| 当前版本 | 2.1.1（首次安装使用 2.1.0 种子包，之后经自动更新升级） |
 | 运行平台 | macOS 15 及以上，Apple Silicon 与 Intel 均为 Universal 构建 |
-| 技术栈 | Swift 6 / SwiftUI / Vision / PDFKit / URLSession，零第三方依赖 |
+| 技术栈 | Swift 6 / SwiftUI / Vision / PDFKit / URLSession；第三方依赖仅 Sparkle（自动更新） |
 | 工程生成 | [XcodeGen](https://github.com/yonaskolb/XcodeGen)（`project.yml` 为工程定义） |
+
+Windows 版（.NET 10 + WinUI 3，识别、归类与金额口径与 macOS 版对齐）位于 `feature/windows-net10` 分支，通过该分支的版本标签发布安装包并自动更新，不在本分支内。
 
 ## 功能
 
@@ -35,6 +37,11 @@
 - **合并 PDF**：按同样的类别顺序将票据原样拼接，不排版、不缩放。
 - **仅 Excel**：单独导出报销明细表。
 - **提交前检查**：逐项列出原文件缺失、待复核票据、住宿缺发票、滴滴未配对、行程日期重叠，并给出与 Excel 同口径的分类合计。
+
+**自动更新**
+
+- 基于 Sparkle 实现：应用启动时按 24 小时间隔自动检查新版本，也可在菜单「报销整理 → 检查更新…」手动检查；发现新版后弹窗提示，确认即自动下载、校验并重启完成升级。
+- 更新清单与安装包经 EdDSA 签名校验，托管于阿里云 OSS（国内网络可直接下载）。首次安装的 2.1.0 为种子版，此后版本均可自动升级，不需要重新下载安装包。
 
 **数据与凭据**
 
@@ -68,6 +75,14 @@ bash BuildScripts/build_native.sh
 脚本默认以 `arm64 x86_64` 双架构构建 Release，校验产物架构后做 ad-hoc 签名，并生成带「应用程序」软链的 DMG（`报销整理.dmg`，打开后将应用拖入 Applications 即完成安装）。如只需当前架构，可用 `ARCHS=$(uname -m)` 覆盖。
 
 说明：产物为 ad-hoc 签名、未经公证，首次打开时系统会拦截，需在 Finder 中右键应用选择「打开」并确认一次。
+
+### 发布可自动更新的版本
+
+```bash
+bash BuildScripts/release_macos.sh 2.1.2
+```
+
+发版脚本一条龙完成：写入版本号、构建并打 DMG、归档、用 Sparkle 工具生成带签名的更新清单与增量包、上传到阿里云 OSS（更新包先传、清单最后传）。发版前置条件（私钥、工具包、归档目录约定等）与排障记录见 `BuildScripts/SPARKLE-RELEASE.md`。
 
 ## 配置
 
@@ -166,6 +181,8 @@ ZIP 内部结构示例：
 ```
 ├── project.yml                  # XcodeGen 工程定义
 ├── BuildScripts/build_native.sh # Release 构建 + 签名 + DMG
+├── BuildScripts/release_macos.sh # Sparkle 发版一条龙（构建、归档、生成清单、上传）
+├── BuildScripts/SPARKLE-RELEASE.md # Sparkle 发版流程与托管约定
 ├── BuildAssets/                 # 应用图标与品牌图
 ├── Sources/
 │   ├── App/                     # 入口、全局状态、主窗口
@@ -184,7 +201,7 @@ ZIP 内部结构示例：
 
 - 构建与测试在 Xcode 中进行（⌘B 构建、⌘U 运行全部测试）；测试覆盖行程归类、配对、金额口径、清单完整性、排版页数与配置合并等关键逻辑。
 - 工程文件由 XcodeGen 生成并纳入版本管理；修改 `project.yml` 或增删源文件后重新执行 `xcodegen generate`。
-- 代码为 Swift 6 语言模式，依赖仅限系统框架。
+- 代码为 Swift 6 语言模式；除自动更新所用的 Sparkle（SPM 引入）外，依赖仅限系统框架。
 
 ## 已知限制
 
